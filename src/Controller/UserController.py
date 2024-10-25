@@ -10,7 +10,7 @@ async def register(user: User, userBusiness: UserBusiness = Depends()):
         raise HTTPException(status_code=result.status_code, detail=result.message)
     return result.to_dict()
 
-@router.get("/users/{username}")
+@router.get("/user/{username}")
 async def user(username: str=None, userBusiness: UserBusiness = Depends()):
     result = await userBusiness.get_user(username)
     if not result.success:
