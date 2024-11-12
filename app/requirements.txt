@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+sqlalchemy
+asyncpg
+pydantic
+pydantic-settings
+sqlalchemy[asyncio]
+greenlet
+httpx
+pytest
+asyncmy
+pytest-asyncio  # For testing async code
