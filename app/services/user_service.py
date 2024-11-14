@@ -2,6 +2,7 @@
 from app.repositories.user_repo import UserRepository
 from app.schemas.user import UserCreate, UserUpdate, UserOut
 from app.models.user import User
+from app.core.logging import logger
 
 class UserService:
     def __init__(self, user_repo: UserRepository):
@@ -13,7 +14,9 @@ class UserService:
         return UserOut.from_orm(new_user)
 
     async def get_user(self, user_id: int) -> UserOut | None:
+        logger.debug("Get_user function initiated")
         user = await self.user_repo.get_user_by_id(user_id)
+        logger.debug("Get_user function Completed")
         return UserOut.from_orm(user) if user else None
 
     async def update_user(self, user_id: int, user_data: UserUpdate) -> UserOut | None:
