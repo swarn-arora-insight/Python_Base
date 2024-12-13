@@ -65,3 +65,7 @@ This project is a CRUD application built with FastAPI, utilizing SQLAlchemy for 
 8. **Testing:**
     ```bash
     pytest
+
+9. **Pylint Check:**
+    ```bash
+pylint --ignore=lib,site-packages,dist ../python_base

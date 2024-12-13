@@ -10,3 +10,4 @@ httpx
 pytest
 asyncmy
 pytest-asyncio  # For testing async code
+pylint
