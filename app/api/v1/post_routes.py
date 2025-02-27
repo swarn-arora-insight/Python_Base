@@ -1,10 +1,10 @@
 # app/api/v1/post_routes.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.db import get_db
-from app.repositories.post_repo import PostRepository
-from app.services.post_service import PostService
-from app.schemas.post import PostCreate, PostUpdate, PostOut
+from core.db import get_db
+from repositories.post_repo import PostRepository
+from services.post_service import PostService
+from schemas.post import PostCreate, PostUpdate, PostOut
 
 router = APIRouter()
 

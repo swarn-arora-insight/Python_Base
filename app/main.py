@@ -1,7 +1,7 @@
 # app/main.py
 from fastapi import FastAPI
-from app.api.v1 import user_routes, post_routes, comment_routes
-from app.utils.init_db import init_db
+from api.v1 import user_routes, post_routes, comment_routes
+from utils.init_db import init_db
 import asyncio
 
 app = FastAPI()
@@ -15,3 +15,4 @@ app.include_router(comment_routes.router, prefix="/v1/comments", tags=["Comments
 @app.on_event("startup")
 async def on_startup():
     await init_db()
+

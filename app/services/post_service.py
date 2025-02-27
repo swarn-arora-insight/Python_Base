@@ -1,7 +1,8 @@
 # app/services/post_service.py
-from app.repositories.post_repo import PostRepository
-from app.schemas.post import PostCreate, PostUpdate, PostOut
-from app.models.post import Post
+from repositories.post_repo import PostRepository
+from schemas.post import PostCreate, PostUpdate, PostOut
+from models.post import Post
+from typing import Optional
 
 class PostService:
     def __init__(self, post_repo: PostRepository):
@@ -12,11 +13,11 @@ class PostService:
         new_post = await self.post_repo.create_post(post)
         return PostOut.from_orm(new_post)
 
-    async def get_post(self, post_id: int) -> PostOut | None:
+    async def get_post(self, post_id: int) -> Optional[PostOut]:
         post = await self.post_repo.get_post_by_id(post_id)
         return PostOut.from_orm(post) if post else None
 
-    async def update_post(self, post_id: int, post_data: PostUpdate) -> PostOut | None:
+    async def update_post(self, post_id: int, post_data: PostUpdate) -> Optional[PostOut]:
         post = await self.post_repo.get_post_by_id(post_id)
         if post:
             updated_post = await self.post_repo.update_post(post, post_data.dict(exclude_unset=True))

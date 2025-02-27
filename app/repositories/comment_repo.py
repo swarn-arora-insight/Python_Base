@@ -1,7 +1,7 @@
 # app/repositories/comment_repo.py
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.models.comment import Comment
+from models.comment import Comment
 
 class CommentRepository:
     def __init__(self, db: AsyncSession):

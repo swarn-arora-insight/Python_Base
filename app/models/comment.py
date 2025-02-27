@@ -1,7 +1,7 @@
 # app/models/comment.py
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
-from app.models.base import Base
+from models.base import Base
 
 class Comment(Base):
     __tablename__ = "comments"

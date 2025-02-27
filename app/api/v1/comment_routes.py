@@ -1,10 +1,10 @@
 # app/api/v1/comment_routes.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.db import get_db
-from app.repositories.comment_repo import CommentRepository
-from app.services.comment_service import CommentService
-from app.schemas.comment import CommentCreate, CommentUpdate, CommentOut
+from core.db import get_db
+from repositories.comment_repo import CommentRepository
+from services.comment_service import CommentService
+from schemas.comment import CommentCreate, CommentUpdate, CommentOut
 
 router = APIRouter()
 

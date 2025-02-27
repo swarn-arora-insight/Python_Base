@@ -1,7 +1,8 @@
 # app/services/comment_service.py
-from app.repositories.comment_repo import CommentRepository
-from app.schemas.comment import CommentCreate, CommentUpdate, CommentOut
-from app.models.comment import Comment
+from repositories.comment_repo import CommentRepository
+from schemas.comment import CommentCreate, CommentUpdate, CommentOut
+from models.comment import Comment
+from typing import Optional
 
 class CommentService:
     def __init__(self, comment_repo: CommentRepository):
@@ -12,11 +13,11 @@ class CommentService:
         new_comment = await self.comment_repo.create_comment(comment)
         return CommentOut.from_orm(new_comment)
 
-    async def get_comment(self, comment_id: int) -> CommentOut | None:
+    async def get_comment(self, comment_id: int) -> Optional[CommentOut]:  # CommentOut | None:
         comment = await self.comment_repo.get_comment_by_id(comment_id)
         return CommentOut.from_orm(comment) if comment else None
 
-    async def update_comment(self, comment_id: int, comment_data: CommentUpdate) -> CommentOut | None:
+    async def update_comment(self, comment_id: int, comment_data: CommentUpdate) -> Optional[CommentOut]:
         comment = await self.comment_repo.get_comment_by_id(comment_id)
         if comment:
             updated_comment = await self.comment_repo.update_comment(comment, comment_data.dict(exclude_unset=True))

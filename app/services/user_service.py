@@ -1,8 +1,9 @@
 # app/services/user_service.py
-from app.repositories.user_repo import UserRepository
-from app.schemas.user import UserCreate, UserUpdate, UserOut
-from app.models.user import User
-from app.core.logging import logger
+from repositories.user_repo import UserRepository
+from schemas.user import UserCreate, UserUpdate, UserOut
+from models.user import User
+from core.logging import logger
+from typing import Optional
 
 class UserService:
     def __init__(self, user_repo: UserRepository):
@@ -13,13 +14,13 @@ class UserService:
         new_user = await self.user_repo.create_user(user)
         return UserOut.from_orm(new_user)
 
-    async def get_user(self, user_id: int) -> UserOut | None:
+    async def get_user(self, user_id: int) -> Optional[UserOut]:
         logger.debug("Get_user function initiated")
         user = await self.user_repo.get_user_by_id(user_id)
         logger.debug("Get_user function Completed")
         return UserOut.from_orm(user) if user else None
 
-    async def update_user(self, user_id: int, user_data: UserUpdate) -> UserOut | None:
+    async def update_user(self, user_id: int, user_data: UserUpdate) -> Optional[UserOut]:
         user = await self.user_repo.get_user_by_id(user_id)
         if user:
             updated_user = await self.user_repo.update_user(user, user_data.dict(exclude_unset=True))
