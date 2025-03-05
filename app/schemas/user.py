@@ -1,6 +1,6 @@
 # app/schemas/user.py
-from pydantic import BaseModel
 from typing import Union,Optional
+from pydantic import BaseModel, EmailStr
 
 ###alok in ##
 
@@ -13,8 +13,18 @@ class LoginResponse(BaseModel):
     email: str 
 
     class Config:
-        orm_mode = True
+        from_attributes=True
+        # orm_mode = True
 
+class UserRegistration(BaseModel):
+    """user registration pydantic model"""
+
+    first_name: str
+    last_name: str
+    age: int
+    email_address: EmailStr
+    address: Union[str, int]
+    password: str
 
 class LoginCreate(BaseModel):
     firstname: str

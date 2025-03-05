@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verification Request</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 20px;
+        }
+        .email-container {
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 650px;
+            margin: 0 auto;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+        }
+        .email-header {
+            text-align: center;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .email-header h2 {
+            color: #1e88e5;
+            font-size: 24px;
+            margin: 0;
+        }
+        .email-body {
+            font-size: 16px;
+            color: #333;
+            line-height: 1.8;
+            padding: 15px 0;
+        }
+        .user-details {
+            margin-top: 20px;
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+        .user-details p {
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        .user-details strong {
+            color: #1e88e5;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 14px;
+            color: #777;
+            padding-top: 20px;
+            border-top: 2px solid #e0e0e0;
+        }
+        .footer p {
+            margin: 5px 0;
+        }
+        .verification-code-box {
+            background-color: #1e88e5;
+            color: white;
+            padding: 20px 30px;
+            font-size: 30px;
+            border-radius: 8px;
+            display: inline-block;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="email-header">
+            <h2>Email Verification Code</h2>
+        </div>
+        <div class="email-body">
+            <p>Hi {{user}},</p>
+            <p>Please find your verification link  below:</p>
+            <!-- <div class="user-details">
+                <p><span class="verification-code-box">{{authenticate_link}}</span></p>
+            </div> -->
+            <p>{{authenticate_link}} </p>
+            <p>This email contains your verification link, Please use it to complete the email verification process.</p>
+            <!-- <p>{{authenticate_link}} </p> -->
+            <p>Thank you,</p>
+            <p>Template</p>
+        </div>
+        <div class="footer">
+            <p>If you have any questions, feel free to <a href="template.com">contact us</a>.</p>
+            <!-- <p>All rights reserved | © Copyright Agent Mira.</p> -->
+        </div>
+    </div>
+</body>
+</html>
