@@ -9,8 +9,9 @@ from fastapi.security import OAuth2PasswordRequestForm,OAuth2PasswordBearer
 
 
 async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async with async_session() as session:
+        from utils.uam_seeder import seed_uam
+        await seed_uam(session)
 
 
 #### alok in ###

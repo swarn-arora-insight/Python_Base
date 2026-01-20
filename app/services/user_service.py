@@ -145,7 +145,10 @@ class UserService:
         age:int,
         address:Union[str, int],
         email: str,
+        email: str,
         password: str,
+        org_id: Optional[int] = None,
+        role_id: Optional[int] = None,
         ) -> str:
         """
         Adds a new user to the system.
@@ -187,7 +190,11 @@ class UserService:
                 "address":address,
                 "token": "",
                 "last_logged_in": datetime.utcnow(),
-                "created_on": datetime.utcnow(), 
+                "token": "",
+                "last_logged_in": datetime.utcnow(),
+                "created_on": datetime.utcnow(),
+                "org_id": org_id,
+                "role_id": role_id
             }
             # Update into the database
             await self.user_repo.upsert_item(user_details)

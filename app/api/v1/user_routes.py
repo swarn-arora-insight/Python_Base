@@ -9,6 +9,7 @@ from schemas.user import UserCreate, UserUpdate, UserOut,UserRegistration
 from schemas.user import LoginCreate, LoginResponse
 from utils.init_db import hash_password
 from models.user import User
+from app.core.security import RequiresFeature
 from core.logging import logger
 from models.constants import UserMessages
 from schemas.user import LoginRequest
@@ -83,8 +84,8 @@ router = APIRouter()
 #         raise HTTPException(status_code=404, detail="User not found")
 #     return user
 
-# @router.delete("/{user_id}", response_model=dict)
-# async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
+# @router.delete("/{user_id}", dependencies=[Depends(RequiresFeature("user_delete"))])
+# async def delete_user(user_id: str, db: AsyncSession = Depends(get_db)):
 #     user_service = UserService(UserRepository(db))
 #     success = await user_service.delete_user(user_id)
 #     if not success:
@@ -118,7 +119,10 @@ async def user_signup(
             age=request.age,
             address=request.address,
             email=request.email_address,
+            email=request.email_address,
             password=request.password,
+            org_id=request.org_id,
+            role_id=request.role_id,
         )
         # Check the result and respond accordingly
         if result == "Success":

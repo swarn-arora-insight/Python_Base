@@ -25,7 +25,13 @@ class User(Base):
     created_on = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)  # Auto-set timestamp
     auth_key=Column(String(255), nullable=True)
     is_auth = Column(Integer, default=0)
-
+    
+    # Foreign Keys
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
+    
+    # Relationships
+    organization = relationship("Organization", back_populates="users")
+    role = relationship("Role", back_populates="users")
     
     posts = relationship("Post", back_populates="author")
-

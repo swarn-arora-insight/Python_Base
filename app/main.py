@@ -21,6 +21,8 @@ app.add_middleware(
 app.include_router(user_routes.router, prefix="/v1/users", tags=["Users"])
 app.include_router(post_routes.router, prefix="/v1/posts", tags=["Posts"])
 app.include_router(comment_routes.router, prefix="/v1/comments", tags=["Comments"])
+from api.v1 import uam_routes
+app.include_router(uam_routes.router, prefix="/v1/uam", tags=["UAM"])
 
 # Initialize the database
 @app.on_event("startup")
