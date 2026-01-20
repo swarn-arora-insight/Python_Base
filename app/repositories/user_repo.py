@@ -6,6 +6,11 @@ from core.logging import logger
 from typing import Any, Dict, Optional, List
 from sqlalchemy import update
 
+import base64
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.backends import default_backend
+FRONTED_SECRET_KEY = b"w3@r37hebe5773@m"
 
 class UserRepository:
     def __init__(self, db: AsyncSession):
@@ -165,3 +170,41 @@ class UserRepository:
             logger.error(f"Error storing auth_key: {str(e)}")
             raise
 
+    @staticmethod
+    async def aes_encrypt(text: str) -> str:
+        """
+        Used for Encrypting the string into cryptography method
+        """
+        cipher = Cipher(
+            algorithms.AES(FRONTED_SECRET_KEY),
+            modes.ECB(),
+            backend=default_backend()
+        )
+        encryptor = cipher.encryptor()
+
+        padder = padding.PKCS7(128).padder()
+        padded = padder.update(text.encode("utf-8")) + padder.finalize()
+
+        encrypted = encryptor.update(padded) + encryptor.finalize()
+        return base64.b64encode(encrypted).decode("utf-8")
+
+    @staticmethod
+    def aes_decrypt(encrypted_text: str) -> str:
+        """
+        Takes an encrypted string as input and returns the corresponding decrypted plaintext.
+        """
+        cipher = Cipher(
+            algorithms.AES(FRONTED_SECRET_KEY),
+            modes.ECB(),
+            backend=default_backend()
+        )
+        decryptor = cipher.decryptor()
+
+        decrypted = decryptor.update(
+            base64.b64decode(encrypted_text)
+        ) + decryptor.finalize()
+
+        unpadder = padding.PKCS7(128).unpadder()
+        unpadded = unpadder.update(decrypted) + unpadder.finalize()
+
+        return unpadded.decode("utf-8")

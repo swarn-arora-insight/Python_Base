@@ -170,10 +170,18 @@ async def user_signup(
 async def login_user_with_credentials(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     """
     User wants to login through their credentials
+    Example payload in encrypted format in cryptography:
+    {
+    "email": "asx3h2/ihewtJTPRFtcrhHZtXrhZDK4ET3R9svLjVmT5M27MWbWn0ZFKP7zmlHG7",
+    "password": "Z4wOzc3FTBdq44spBVTZrA=="
+    }
     """
     user_service = UserService(UserRepository(db))
     try:
-        token, first_name, last_name,is_auth = await user_service.authenticate_user(payload.email, payload.password)
+        email_dec = UserRepository.aes_decrypt(payload.email)
+        password_dec = UserRepository.aes_decrypt(payload.password)
+        # 
+        token, first_name, last_name,is_auth = await user_service.authenticate_user(email_dec, password_dec)
         if token is not None:
             validate_token, user_data = await user_service.decode_jwt_token(token)
             if validate_token:
