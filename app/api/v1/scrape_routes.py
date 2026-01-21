@@ -3,6 +3,7 @@ import os
 from fastapi import APIRouter, HTTPException, Depends
 from schemas.scrape import StartScrapeRequest, OtpRequest
 from services.scrape_service import ScrapeService
+from services.user_service import UserService
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,11 +15,12 @@ def get_scrape_service():
 @router.post("/start")
 async def start_scrape(
     request: StartScrapeRequest, 
-    service: ScrapeService = Depends(get_scrape_service)
+    service: ScrapeService = Depends(get_scrape_service),
+    user_info: dict = Depends(UserService.authenticate_token)
 ):
     username = request.username or os.getenv("VAUTO_USERNAME")
     password = request.password or os.getenv("VAUTO_PASSWORD")
-    report_name = request.report_name or os.getenv("VAUTO_REPORT_NAME", "Taverna Inventory IRECON PHOTOS4")
+    report_name = request.report_name or os.getenv("VAUTO_REPORT_NAME", "Taverna Inventory IRECON PHOTOS3")
 
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and Password required")
@@ -32,7 +34,8 @@ async def start_scrape(
 @router.post("/otp")
 async def submit_otp(
     request: OtpRequest, 
-    service: ScrapeService = Depends(get_scrape_service)
+    service: ScrapeService = Depends(get_scrape_service),
+    user_info: dict = Depends(UserService.authenticate_token)
 ):
     report_name = os.getenv("VAUTO_REPORT_NAME", "Taverna Inventory IRECON PHOTOS4")
     try:

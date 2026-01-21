@@ -122,7 +122,7 @@ class UserService:
                 first_name = user.get("first_name", "")
                 is_auth = user.get("is_auth", 0)
                 user_id=user.get("user_id", "")
-                user["last_logged_in"] = datetime.utcnow().isoformat()
+                user["last_logged_in"] = datetime.utcnow()
                 await self.user_repo.upsert_item(user)  # Update the user document
                 confirmation_key=uuid.uuid4()
                 if is_auth == 0:

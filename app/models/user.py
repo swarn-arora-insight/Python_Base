@@ -26,6 +26,5 @@ class User(Base):
     auth_key=Column(String(255), nullable=True)
     is_auth = Column(Integer, default=0)
 
-    
-    posts = relationship("Post", back_populates="author")
+
 
