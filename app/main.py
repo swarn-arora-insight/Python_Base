@@ -1,6 +1,6 @@
 # app/main.py
 from fastapi import FastAPI
-from api.v1 import user_routes, post_routes, comment_routes
+from api.v1 import user_routes, post_routes, comment_routes, scrape_routes
 from utils.init_db import init_db
 from core.logging import logger
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +21,7 @@ app.add_middleware(
 app.include_router(user_routes.router, prefix="/v1/users", tags=["Users"])
 app.include_router(post_routes.router, prefix="/v1/posts", tags=["Posts"])
 app.include_router(comment_routes.router, prefix="/v1/comments", tags=["Comments"])
+app.include_router(scrape_routes.router, prefix="/v1/scrape", tags=["Scraping"])
 
 # Initialize the database
 @app.on_event("startup")
