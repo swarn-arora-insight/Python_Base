@@ -19,8 +19,8 @@ app.add_middleware(
 
 # Include routers for the User, Post, and Comment resources
 app.include_router(user_routes.router, prefix="/v1/users", tags=["Users"])
-app.include_router(post_routes.router, prefix="/v1/posts", tags=["Posts"])
-app.include_router(comment_routes.router, prefix="/v1/comments", tags=["Comments"])
+# app.include_router(post_routes.router, prefix="/v1/posts", tags=["Posts"])
+# app.include_router(comment_routes.router, prefix="/v1/comments", tags=["Comments"])
 app.include_router(scrape_routes.router, prefix="/v1/scrape", tags=["Scraping"])
 
 # Initialize the database
