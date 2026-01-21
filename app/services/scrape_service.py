@@ -109,12 +109,6 @@ class ScrapeService:
 
     # --- Flows ---
 
-    # def convert_xls_to_xlsx(xls_path):
-    #     xlsx_path = xls_path.replace(".xls", ".xlsx")
-    #     df = pd.read_excel(xls_path, engine="xlrd")
-    #     df.to_excel(xlsx_path, index=False, engine="openpyxl")
-    #     return xlsx_path
-
     def upload_latest_file_to_s3(self):
         try:
             download_path = os.path.join(os.getcwd(), "downloads")
@@ -132,35 +126,51 @@ class ScrapeService:
             # Read file into DataFrame
             if latest_file.endswith(".csv"):
                 df = pd.read_csv(latest_file)
-            elif latest_file.endswith(".xlsx") or latest_file.endswith(".xls"):
-                if latest_file.endswith(".xls"):
-                    logger.info("xls file found")
-                    try:
-                    # latest_file = self.convert_xls_to_xlsx(latest_file)
-                        xlsx_path = latest_file.replace(".xls", ".xlsx")
-                        logger.info(f"xlsx_path: {xlsx_path}")
-                        df = pd.read_excel(latest_file, engine="xlrd")
-                    
-                        df.to_excel(xlsx_path, index=False, engine="openpyxl")
-                        logger.info("xlsx file created")
-                        df = pd.read_excel(xlsx_path)
-                        logger.info(f"df: {df}")
-                    except Exception as e:
-                        logger.error(f"Error converting xls to xlsx: {e}")
-                        raise
-                else:
-                    df = pd.read_excel(latest_file)
+
+            elif latest_file.endswith(".xls"):
+                logger.info("xls file found")
+                xlsx_path = latest_file.replace(".xls", ".xlsx")
+
+                df = pd.read_excel(latest_file, engine="xlrd")
+                df.to_excel(xlsx_path, index=False, engine="openpyxl")
+                df = pd.read_excel(xlsx_path)
+
+            elif latest_file.endswith(".xlsx"):
+                df = pd.read_excel(latest_file)
 
             else:
                 logger.warning(f"Unsupported file format: {latest_file}")
                 return
 
-            # --- SANITIZE DATAFRAME ---
-            # Convert all object columns to string to avoid PyArrow mixed-type errors
+        # ---------- SANITIZE DATAFRAME (PERMANENT FIX) ----------
             for col in df.columns:
-                if df[col].dtype == 'object':
-                    df[col] = df[col].astype(str)
-            # --------------------------
+                if df[col].dtype == "object":
+
+                    # Try to understand if column is numeric
+                    numeric_ratio = (
+                        pd.to_numeric(df[col], errors="coerce")
+                        .notna()
+                        .mean()
+                    )
+
+                    if numeric_ratio > 0.8:
+                        # Mostly numeric → clean & convert
+                        df[col] = (
+                            df[col]
+                            .astype(str)
+                            .str.replace(",", "", regex=False)
+                        )
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+                        logger.info(f"Column '{col}' normalized as NUMERIC")
+                    else:
+                        # Mostly text → force string
+                        df[col] = (
+                            df[col]
+                            .astype(str)
+                            .replace("nan", None)
+                        )
+                        logger.info(f"Column '{col}' normalized as STRING")
+        # -------------------------------------------------------
 
             # S3 Upload Constants
 
