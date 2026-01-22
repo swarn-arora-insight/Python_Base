@@ -43,10 +43,8 @@ class LoginCreate(BaseModel):
     password: str 
 
 class LoginRequest(BaseModel):
-    address: str
+    email: str
     password: str
-    org_id: Optional[int] = None
-    role_id: Optional[int] = None
 
 ### alok out ####
 

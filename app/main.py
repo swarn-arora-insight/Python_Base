@@ -9,14 +9,18 @@ from core.db import engine
 import asyncio
 
 app = FastAPI()
-origins = ["*"]
+origins = [
+    "http://localhost:3000",
+    "https://dev.viewcurry.com"
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # A list of allowed origins
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods like GET, POST, PUT, DELETE, etc.
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Authorization"],
 )
 
 # Include routers for the User, Post, and Comment resources

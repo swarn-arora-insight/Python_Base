@@ -12,7 +12,7 @@ import jwt
 from services.email_verification import send_email_verification_mail
 from typing import Union
 import bcrypt
-import os
+import os, json
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from core.db import get_db
@@ -108,20 +108,16 @@ class UserService:
         user = await self.user_repo._find_user_by_email(email)
         try:
             if user and bcrypt.checkpw(password.encode("utf-8"), user["password"].encode("utf-8")):
-                token = jwt.encode(
-                    {
-                        "email": email,
-                        "user_id": user["user_id"],
-                        "id":user["id"],
-                        "exp": datetime.utcnow() + timedelta(hours=8),
-                    },
-                    secret_key,
-                    algorithm="HS256",
-                )
-                user["token"] = token 
+                access_token = {"email": email, "org_id": user["org_id"], "role_id": user["role_id"], "user_id": user["user_id"], "exp": (datetime.utcnow() + timedelta(hours=8)).isoformat()}
+                access_token = await self.user_repo.aes_encrypt(json.dumps(access_token))
+                token = uuid.uuid4().hex[:32]
+                
                 first_name = user.get("first_name", "")
+                last_name = user.get("last_name", "")
                 is_auth = user.get("is_auth", 0)
                 user_id=user.get("user_id", "")
+                
+                user["token"] = token
                 user["last_logged_in"] = datetime.utcnow().isoformat()
                 await self.user_repo.upsert_item(user)  # Update the user document
                 confirmation_key=uuid.uuid4()
@@ -129,9 +125,9 @@ class UserService:
                     await self.user_repo.store_auth_key(user_id,confirmation_key)
                     authenticate_link=f"{BASE_URL}authentication?key={confirmation_key}"
                     send_email_verification_mail(email, first_name, authenticate_link)
-                return token, user.get("first_name", ""), user.get("last_name", ""),is_auth
+                return access_token, token, first_name, last_name
             else:
-                return None, "", "",0
+                return None, None, "", ""
 
         except Exception as e:
             logger.error(f"Error fetching user profile: {str(e)}")
@@ -144,7 +140,6 @@ class UserService:
         last_name: str,
         age:int,
         address:Union[str, int],
-        email: str,
         email: str,
         password: str,
         org_id: Optional[int] = None,
@@ -206,23 +201,6 @@ class UserService:
                 status_code=500, detail=UserMessages.INTERNAL_SERVER_ERROR  
             )
     
-    async def decode_jwt_token(self, token: str) -> tuple:
-        """
-        Args:
-            token (str): The JWT token to decode.
-
-        Returns:
-            tuple: A tuple indicating if the token is valid and the payload of the token.
-
-        Raises:
-            HTTPException: If the token is invalid or cannot be decoded.
-        """
-        try:
-            payload = jwt.decode(token, secret_key, algorithms=["HS256"])
-            return (True, payload)
-        except Exception as exc:
-            raise HTTPException(status_code=401, detail="Invalid token")
-
     async def logout_user(self, user_id: str) -> bool:
         """
         Logs out a user by clearing their token.

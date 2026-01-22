@@ -1,5 +1,5 @@
 # app/api/v1/user_routes.py
-from fastapi import APIRouter, Depends, HTTPException,status
+from fastapi import APIRouter, Depends, HTTPException,status,Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from core.db import get_db
@@ -9,7 +9,7 @@ from schemas.user import UserCreate, UserUpdate, UserOut,UserRegistration
 from schemas.user import LoginCreate, LoginResponse
 from utils.init_db import hash_password
 from models.user import User
-from app.core.security import RequiresFeature
+from core.security import RequiresFeature
 from core.logging import logger
 from models.constants import UserMessages
 from schemas.user import LoginRequest
@@ -119,7 +119,6 @@ async def user_signup(
             age=request.age,
             address=request.address,
             email=request.email_address,
-            email=request.email_address,
             password=request.password,
             org_id=request.org_id,
             role_id=request.role_id,
@@ -171,7 +170,7 @@ async def user_signup(
 
 
 @router.post("/login")
-async def login_user_with_credentials(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login_user_with_credentials(response: Response, payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     """
     User wants to login through their credentials
     Example payload in encrypted format in cryptography:
@@ -182,25 +181,20 @@ async def login_user_with_credentials(payload: LoginRequest, db: AsyncSession = 
     """
     user_service = UserService(UserRepository(db))
     try:
-        email_dec = UserRepository.aes_decrypt(payload.email)
-        password_dec = UserRepository.aes_decrypt(payload.password)
-        # 
-        token, first_name, last_name,is_auth = await user_service.authenticate_user(email_dec, password_dec)
-        if token is not None:
-            validate_token, user_data = await user_service.decode_jwt_token(token)
-            if validate_token:
-                return {
-                    "header": {
-                        "code": 200,
-                        "message": UserMessages.SUCCESS,
-                    },
-                    "response": {
-                            "token": token,
-                            "firstName": first_name,
-                            "lastName": last_name,
-                            "is_auth":is_auth,
-                        }
+        access_token, token, first_name, last_name = await user_service.authenticate_user( UserRepository.aes_decrypt(payload.email), UserRepository.aes_decrypt(payload.password))
+        if access_token is not None and token is not None:
+            response.headers["Authorization"] = access_token
+            return {
+                "header": {
+                    "code": 200,
+                    "message": UserMessages.SUCCESS,
+                },
+                "response": {
+                        "token": token,
+                        "firstName": first_name,
+                        "lastName": last_name,
                     }
+                }
         return {
             "header": {
                 "code": 400,

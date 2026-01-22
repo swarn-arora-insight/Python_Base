@@ -17,7 +17,7 @@ class User(Base):
     last_name = Column(String(50), nullable=False)
     age = Column(Integer, nullable=False)
     address = Column(String(255), nullable=False)
-    token = Column(String(255), nullable=True)  # Optional field
+    token = Column(String(255), nullable=True)
     email = Column(String(100), unique=True, index=True, nullable=False)
     password = Column(String(255), nullable=False)
     is_active = Column(Integer, default=1) # 1 = Active, 0 = Inactive
@@ -27,8 +27,8 @@ class User(Base):
     is_auth = Column(Integer, default=0)
     
     # Foreign Keys
-    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
-    role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
+    org_id = Column(String(500), ForeignKey("organizations.id"), nullable=True)
+    role_id = Column(String(500), ForeignKey("roles.id"), nullable=True)
     
     # Relationships
     organization = relationship("Organization", back_populates="users")

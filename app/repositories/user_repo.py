@@ -69,6 +69,8 @@ class UserRepository:
                 "last_logged_in": user_data.last_logged_in,
                 "id":user_data.id,
                 "is_auth":user_data.is_auth,
+                "org_id":user_data.org_id,
+                "role_id":user_data.role_id,
                 # Include other fields as necessary
             }
 
