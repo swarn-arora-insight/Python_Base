@@ -1,6 +1,7 @@
 # app/schemas/user.py
 from typing import Union,Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
+from disposable_email_domains import blocklist
 
 ###alok in ##
 
@@ -25,6 +26,13 @@ class UserRegistration(BaseModel):
     email_address: EmailStr
     address: Union[str, int]
     password: str
+    @field_validator("email_address")
+    @classmethod
+    def reject_disposable_email_address(cls, v):
+        domain = v.split("@")[1].lower()
+        if domain in blocklist:
+            raise ValueError("Disposable email addresses are not allowed")
+        return v
 
 class LoginCreate(BaseModel):
     firstname: str
