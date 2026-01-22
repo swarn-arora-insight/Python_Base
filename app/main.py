@@ -4,6 +4,8 @@ from api.v1 import user_routes, post_routes, comment_routes
 from utils.init_db import init_db
 from core.logging import logger
 from fastapi.middleware.cors import CORSMiddleware
+from models.base import Base
+from core.db import engine
 import asyncio
 
 app = FastAPI()
@@ -27,6 +29,11 @@ app.include_router(uam_routes.router, prefix="/v1/uam", tags=["UAM"])
 # Initialize the database
 @app.on_event("startup")
 async def on_startup():
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        logger.error(f"Internal server error occurred: {str(e)}")
     try:
         await init_db()
     except Exception as e:
