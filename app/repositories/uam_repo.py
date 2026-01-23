@@ -30,7 +30,7 @@ class UAMRepository:
         return role
 
     async def get_all_roles(self) -> List[Role]:
-        result = await self.db.execute(select(Role).options(joinedload(Role.features)))
+        result = await self.db.execute(select(Role))
         return result.scalars().unique().all()
     
     async def get_role_by_id(self, role_id: int) -> Optional[Role]:

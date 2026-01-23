@@ -8,7 +8,13 @@ from models.base import Base
 from core.db import engine
 import asyncio
 
-app = FastAPI()
+# app = FastAPI()
+app = FastAPI(
+    root_path="/template",
+    openapi_url="/openapi.json",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 origins = [
     "http://localhost:3000",
     "https://dev.viewcurry.com"

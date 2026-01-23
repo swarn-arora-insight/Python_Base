@@ -125,21 +125,12 @@ async def user_signup(
         )
         # Check the result and respond accordingly
         if result == "Success":
-            token, first_name, last_name,is_auth = await user_service.authenticate_user(request.email_address, request.password)
             return {
                 "header": {
                     "code": 200,
                     "message": UserMessages.SUCCESS,
                 },
-                "response": {
-                    "user_details": {
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "token":token,
-                        "is_auth":is_auth,
-                        "email_address": request.email_address                        
-                    }
-                },
+                "response": {},
             }
 
         return {

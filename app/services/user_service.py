@@ -169,7 +169,7 @@ class UserService:
         try:
             user = await self.user_repo._find_user_by_email(email)
             if user:
-                return f"Email '{email}' is already registered."
+                return f"Email address is already registered."
             
             hashed_password = bcrypt.hashpw(
                 password.encode("utf-8"), bcrypt.gensalt()

@@ -26,6 +26,8 @@ class UserRegistration(BaseModel):
     email_address: EmailStr
     address: Union[str, int]
     password: str
+    org_id: Optional[str]
+    role_id: Optional[str]
     @field_validator("email_address")
     @classmethod
     def reject_disposable_email_address(cls, v):
