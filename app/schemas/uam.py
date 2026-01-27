@@ -43,3 +43,6 @@ class OrganizationOut(OrganizationBase):
 
 class TabsList(BaseModel):
     token:str
+
+class OrgDetails(BaseModel):
+    token:str

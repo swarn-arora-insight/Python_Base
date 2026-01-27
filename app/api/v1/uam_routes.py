@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.db import get_db
 from repositories.uam_repo import UAMRepository
 from services.uam_service import UAMService
-from schemas.uam import OrganizationCreate, OrganizationOut, RoleCreate, RoleOut, FeatureOut, FeatureAssign, TabsList
+from schemas.uam import *
 from typing import List
 from models.constants import UserMessages
 from services.user_service import UserService
@@ -16,13 +16,49 @@ def get_uam_service(db: AsyncSession = Depends(get_db)) -> UAMService:
     return UAMService(UAMRepository(db))
 
 # Organizations
-@router.post("/orgs", response_model=OrganizationOut)
-async def add_org(org: OrganizationCreate, service: UAMService = Depends(get_uam_service)):
-    return await service.create_organization(org)
+@router.post("/getorgs")
+async def org_details(
+    payload: OrgDetails,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
+    if len(auth_payload) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    service = UserService(UserRepository(db))
+    is_valid = await service.verify_token(payload.token)
+    if not is_valid:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    org_details = [{ "org_id": 1, "org_name": "Acme Corporation" }]
 
-@router.get("/orgs", response_model=List[OrganizationOut])
-async def list_orgs(service: UAMService = Depends(get_uam_service)):
-    return await service.get_organizations()
+    return {
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": org_details
+    }
+
+# @router.post("/orgs", response_model=OrganizationOut)
+# async def add_org(org: OrganizationCreate, service: UAMService = Depends(get_uam_service)):
+#     return await service.create_organization(org)
+
+# @router.get("/orgs", response_model=List[OrganizationOut])
+# async def list_orgs(service: UAMService = Depends(get_uam_service)):
+#     return await service.get_organizations()
 
 # Roles
 @router.post("/roles", response_model=RoleOut)
@@ -71,7 +107,7 @@ async def tabslist(
             "response": {},
         }
 
-    tab_object = [
+    tab_data = [
         {
             "tab_name": "Organizations",
             "access": 1,
@@ -97,5 +133,5 @@ async def tabslist(
             "code": 200,
             "message": UserMessages.SUCCESS,
         },
-        "response": tab_object
+        "response": tab_data
     }
