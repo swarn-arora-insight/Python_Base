@@ -172,6 +172,14 @@ class ScrapeService:
                         logger.info(f"Column '{col}' normalized as STRING")
         # -------------------------------------------------------
 
+            # ---------- ADD EMPTY PARTITION COLUMNS ----------
+            for col in ["year", "month", "day"]:
+                if col not in df.columns:
+                    df[col] = None
+
+            logger.info("Empty columns added: year, month, day")
+
+
             # S3 Upload Constants
 
             BUCKET = os.getenv("S3_BUCKET")
