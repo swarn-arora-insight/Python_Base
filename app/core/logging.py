@@ -41,8 +41,3 @@ logging_config = {
 
 logging.config.dictConfig(logging_config)
 logger = logging.getLogger()
-
-# Usage
-logger.info("This is an info message")
-logger.error("This is an error message")
-logger.debug("This is an debug message")

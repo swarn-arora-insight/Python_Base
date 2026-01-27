@@ -1,6 +1,6 @@
 # app/main.py
 from fastapi import FastAPI
-from api.v1 import user_routes, post_routes, comment_routes
+from api.v1 import user_routes, post_routes, comment_routes, uam_routes
 from utils.init_db import init_db
 from core.logging import logger
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +14,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",
+    swagger_ui_parameters={"defaultModelsExpandDepth": -1},
 )
 origins = [
     "http://localhost:3000",
@@ -30,10 +31,9 @@ app.add_middleware(
 )
 
 # Include routers for the User, Post, and Comment resources
+# app.include_router(post_routes.router, prefix="/v1/posts", tags=["Posts"]) # Currently commented out and will be used based on future requirements.
+# app.include_router(comment_routes.router, prefix="/v1/comments", tags=["Comments"]) # Currently commented out and will be used based on future requirements.
 app.include_router(user_routes.router, prefix="/v1/users", tags=["Users"])
-app.include_router(post_routes.router, prefix="/v1/posts", tags=["Posts"])
-app.include_router(comment_routes.router, prefix="/v1/comments", tags=["Comments"])
-from api.v1 import uam_routes
 app.include_router(uam_routes.router, prefix="/v1/uam", tags=["UAM"])
 
 # Initialize the database

@@ -104,16 +104,15 @@ class UserService:
     
     @staticmethod
     async def require_authorization(
-        authorization: str = Header(...),
+        authorization: HTTPAuthorizationCredentials = Depends(SECURITY),
         db: AsyncSession = Depends(get_db)
     ) -> dict:
         if not authorization:
             raise HTTPException(status_code=401, detail="Authorization header is required")
         
-        try:
-            token = authorization.replace("Bearer ", "").strip()
-
-            decrypted = UserRepository.aes_decrypt(json.dumps(token))
+        try:            
+            auth_token = authorization.credentials
+            decrypted = UserRepository.aes_decrypt(json.dumps(auth_token))
             payload = json.loads(decrypted)
 
             user_id = payload.get("user_id")
