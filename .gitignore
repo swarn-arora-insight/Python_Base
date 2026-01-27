@@ -23,6 +23,7 @@ myenv
 myenv2
 docs.zip
 archive.zip
+app/core/config.py
 
 # vim temporary files
 *~

@@ -40,3 +40,6 @@ class OrganizationOut(OrganizationBase):
     is_active: bool
     class Config:
         orm_mode = True
+
+class TabsList(BaseModel):
+    token:str

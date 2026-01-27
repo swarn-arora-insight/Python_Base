@@ -6,7 +6,7 @@ from core.logging import logger
 from typing import Optional
 from models.constants import UserMessages
 import uuid
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from services.email_verification import send_email_verification_mail
@@ -100,7 +100,40 @@ class UserService:
             jwt.exceptions.InvalidSignatureError,
         ) as exc:
             raise HTTPException(status_code=401, detail="Invalid token") from exc
+    
+    
+    @staticmethod
+    async def require_authorization(
+        authorization: str = Header(...),
+        db: AsyncSession = Depends(get_db)
+    ) -> dict:
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Authorization header is required")
+        
+        try:
+            token = authorization.replace("Bearer ", "").strip()
 
+            decrypted = UserRepository.aes_decrypt(json.dumps(token))
+            payload = json.loads(decrypted)
+
+            user_id = payload.get("user_id")
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Invalid token")
+
+            repo = UserRepository(db)
+            user_detail = await repo.get_user_details(user_id)
+            return user_detail
+
+        except Exception as e:
+            logger.error(f"Authorization error: {str(e)}")
+            raise HTTPException(status_code=401, detail="Invalid Authorization token")
+
+    
+    async def verify_token(self, token: str) -> bool:
+        user = await self.user_repo.get_token_data(token)
+        return user is not None
+
+    
     async def authenticate_user(self, email: str, password: str):
         """
         Authenticates a user based on the provided email and password.

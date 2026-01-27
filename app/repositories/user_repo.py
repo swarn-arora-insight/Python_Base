@@ -143,7 +143,20 @@ class UserRepository:
         except Exception as e:
             logger.error(f"Error fetching user by user ID: {str(e)}")
             return None
-
+    
+    async def get_token_data(self, token: str) -> bool:
+        try:
+            result = await self.db.execute(
+                select(User).where(
+                    User.token == token,
+                    User.is_active == 1
+                )
+            )
+            user_data = result.scalars().one_or_none()
+            return user_data
+        except Exception as e:
+            logger.info(f"Error with token data: {str(e)}")
+            return False    
 
     async def store_auth_key(self, user_id: int, auth_key: str) -> None:
         """
@@ -171,6 +184,34 @@ class UserRepository:
         except Exception as e:
             logger.error(f"Error storing auth_key: {str(e)}")
             raise
+
+    async def get_user_details(self, user_id: str):
+        """
+        Used for getting user details
+        """
+        try:
+            result = await self.db.execute(
+                select(User).where(
+                    User.user_id == user_id,
+                    User.is_active == 1
+                )
+            )
+            user_data = result.scalars().one_or_none()
+
+            if not user_data:
+                logger.info(f"No active user found with user ID: {user_id}")
+                return {}
+            
+            user_dict = {
+                column.name: getattr(user_data, column.name)
+                for column in User.__table__.columns
+            }
+            return user_dict
+
+        except Exception as e:
+            logger.error(f"Error fetching user details: {str(e)}")
+            return {}
+    
 
     @staticmethod
     async def aes_encrypt(text: str) -> str:
