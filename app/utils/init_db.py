@@ -1,12 +1,17 @@
 # app/utils/init_db.py
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import sessionmaker
 from models.base import Base
 from core.db import engine
 #### a ####
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordRequestForm,OAuth2PasswordBearer
 ####
-
+async_session = sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
 
 async def init_db():
     async with async_session() as session:

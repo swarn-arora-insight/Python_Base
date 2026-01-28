@@ -128,11 +128,6 @@ class UserService:
             raise HTTPException(status_code=401, detail="Invalid Authorization token")
 
     
-    async def verify_token(self, token: str) -> bool:
-        user = await self.user_repo.get_token_data(token)
-        return user is not None
-
-    
     async def authenticate_user(self, email: str, password: str):
         """
         Authenticates a user based on the provided email and password.

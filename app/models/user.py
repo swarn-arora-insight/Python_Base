@@ -27,8 +27,8 @@ class User(Base):
     is_auth = Column(Integer, default=0)
     
     # Foreign Keys
-    org_id = Column(String(500), ForeignKey("organizations.id"), nullable=True)
-    role_id = Column(String(500), ForeignKey("roles.id"), nullable=True)
+    org_id = Column(String(500), ForeignKey("organizations.org_id"), nullable=True)
+    role_id = Column(String(500), ForeignKey("roles.role_id"), nullable=True)
     
     # Relationships
     organization = relationship("Organization", back_populates="users")

@@ -46,3 +46,8 @@ class TabsList(BaseModel):
 
 class OrgDetails(BaseModel):
     token:str
+
+class CreateOrg(BaseModel):
+    token:str
+    org_name:str
+    

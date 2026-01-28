@@ -17,9 +17,20 @@ class UAMRepository:
         await self.db.refresh(org)
         return org
 
-    async def get_all_orgs(self) -> List[Organization]:
-        result = await self.db.execute(select(Organization))
-        return result.scalars().all()
+    async def org_entry(self, payload: dict) -> tuple:
+        try:
+            org = Organization(org_name=payload["org_name"], org_id=payload["org_id"], updated_by=payload["updated_by"])
+            self.db.add(org)
+            await self.db.commit()
+            await self.db.refresh(org)
+            return 200, "Success"
+        except Exception as e:
+            return 500, str(e)
+
+    async def get_all_orgs(self) -> list:
+        result = await self.db.execute(select(Organization.org_id, Organization.org_name).where(Organization.is_active == 1).order_by(Organization.id.asc()))
+        return [{"org_id": row.org_id, "org_name": row.org_name} for row in result.all()]
+
 
     # Role
     async def create_role(self, name: str, description: str = None) -> Role:

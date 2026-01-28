@@ -144,19 +144,14 @@ class UserRepository:
             logger.error(f"Error fetching user by user ID: {str(e)}")
             return None
     
-    async def get_token_data(self, token: str) -> bool:
+    async def get_token_data(self, token: str) -> List:
         try:
-            result = await self.db.execute(
-                select(User).where(
-                    User.token == token,
-                    User.is_active == 1
-                )
-            )
-            user_data = result.scalars().one_or_none()
-            return user_data
+            result = await self.db.execute(select(User.user_id).where(User.token == token, User.is_active == 1))
+            token_data = [{"user_id": row.user_id} for row in result.all()]
+            return token_data
         except Exception as e:
             logger.info(f"Error with token data: {str(e)}")
-            return False    
+            return []    
 
     async def store_auth_key(self, user_id: int, auth_key: str) -> None:
         """

@@ -1,5 +1,5 @@
 # app/main.py
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from api.v1 import user_routes, post_routes, comment_routes, uam_routes
 from utils.init_db import init_db
 from core.logging import logger
@@ -7,6 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from models.base import Base
 from core.db import engine
 import asyncio
+
+from fastapi.responses import JSONResponse
+import traceback
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+)
 
 # app = FastAPI()
 app = FastAPI(
@@ -16,6 +24,18 @@ app = FastAPI(
     redoc_url="/redoc",
     swagger_ui_parameters={"defaultModelsExpandDepth": -1},
 )
+
+# ADDED — global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    traceback.print_exc()
+    logger.error("Unhandled exception occurred", exc_info=True)
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error"},
+    )
+
 origins = [
     "http://localhost:3000",
     "https://dev.viewcurry.com"
@@ -23,7 +43,7 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,11 +63,12 @@ async def on_startup():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
     except Exception as e:
+        traceback.print_exc()
         logger.error(f"Internal server error occurred: {str(e)}")
+        raise 
     try:
         await init_db()
     except Exception as e:
+        traceback.print_exc()
         logger.error(f"Internal server error occurred: {str(e)}")
-
-
-
+        raise

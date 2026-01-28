@@ -2,6 +2,8 @@
 from repositories.uam_repo import UAMRepository
 from schemas.uam import OrganizationCreate, RoleCreate, FeatureAssign
 from typing import List
+from fastapi import HTTPException, status
+import re
 
 class UAMService:
     def __init__(self, uam_repo: UAMRepository):
@@ -24,3 +26,23 @@ class UAMService:
     
     async def assign_features(self, role_id: int, feature_data: FeatureAssign):
         return await self.uam_repo.assign_features_to_role(role_id, feature_data.feature_ids)
+    
+    async def check_org_name(self, org_name: str):
+        if not isinstance(org_name, str):
+            return 400, "Organization name must be a string"
+
+        if not org_name:
+            return 400, "Organization name cannot be empty"
+
+        if len(org_name) < 3 or len(org_name) > 100:
+            return 400, "Organization name must be between 3 and 100 characters"
+
+        if not re.match(r"^[A-Za-z0-9 _-]+$", org_name):
+            return 400, "Organization name contains invalid characters"
+        
+        if not re.search(r"[A-Za-z]", org_name):
+            return 400, "Organization name must contain at least one alphabet"
+        
+        return 200, "Organization name is valid"
+
+    
