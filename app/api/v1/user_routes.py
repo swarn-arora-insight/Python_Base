@@ -175,6 +175,8 @@ async def login_user_with_credentials(payload: LoginRequest, db: AsyncSession = 
     "email": "asx3h2/ihewtJTPRFtcrhHZtXrhZDK4ET3R9svLjVmT5M27MWbWn0ZFKP7zmlHG7",
     "password": "Z4wOzc3FTBdq44spBVTZrA=="
     }
+    sample payload:
+    {"email": "JHhOE/w5q8SwtFYcV1fEPuOhAd2iTTF53io1ZPJ5lxM=", "password": "SHXgT+nGY4Wp0K2QKxc7PA=="}
     """
     user_service = UserService(UserRepository(db))
     try:

@@ -13,6 +13,10 @@ from core.logging import logger
 import pandas as pd
 import glob
 from utils.leadBoostAI_AWS_connection_dump_file import upload_df_to_s3_parquet
+from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Global Session Store: {session_id: driver}
 # In a production environment, this might need more robust handling (e.g., Redis + Grid)
@@ -202,7 +206,6 @@ class ScrapeService:
             ATHENA_DB = os.getenv("ATHENA_DB")
             ATHENA_TABLE = os.getenv("ATHENA_TABLE")
             ATHENA_OUTPUT = os.getenv("ATHENA_OUTPUT")
-
             
 
             # Upload to S3

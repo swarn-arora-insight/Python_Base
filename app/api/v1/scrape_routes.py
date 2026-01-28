@@ -34,7 +34,7 @@ async def start_scrape(
 @router.post("/cargurus/start")
 async def start_cargurus_scrape(
     request: StartScrapeRequest,
-    service: ScrapeService = Depends(get_scrape_service)
+    service: ScrapeService = Depends(get_scrape_service),
     user_info: dict = Depends(UserService.authenticate_token)
 ):
     username = request.username or os.getenv("CARGURUS_USERNAME")

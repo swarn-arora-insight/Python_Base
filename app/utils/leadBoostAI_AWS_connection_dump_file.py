@@ -21,6 +21,119 @@ session = boto3.Session(
 s3 = session.client("s3")
 athena = session.client("athena")
 
+def run_athena_query(query, database, athena_output):
+    response = athena.start_query_execution(
+        QueryString=query,
+        QueryExecutionContext={"Database": database},
+        ResultConfiguration={"OutputLocation": athena_output},
+    )
+    return response["QueryExecutionId"]
+
+
+def wait_for_query(execution_id):
+    while True:
+        status = athena.get_query_execution(QueryExecutionId=execution_id)
+        state = status["QueryExecution"]["Status"]["State"]
+
+        if state in ["SUCCEEDED", "FAILED", "CANCELLED"]:
+            return state
+        time.sleep(1)
+
+
+def athena_table_exists(database, table_name, athena_output):
+    query = f"SHOW TABLES IN {database} LIKE '{table_name}';"
+    execution_id = run_athena_query(query, database, athena_output)
+    state = wait_for_query(execution_id)
+
+    if state != "SUCCEEDED":
+        return False
+
+    results = athena.get_query_results(QueryExecutionId=execution_id)
+    return len(results["ResultSet"]["Rows"]) > 1
+
+
+def create_athena_table_if_not_exists(
+    database, table_name, bucket, project_name, athena_output
+):
+    query = f"""
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table_name} (
+    red_black string,
+
+    carfax_has_report string,
+    carfax_has_manufacturer_recall string,
+    carfax_has_warnings string,
+    carfax_has_problems string,
+
+    certified string,
+    tags string,
+
+    vehicle string,
+    body string,
+    stock_number string,
+    vin string,
+
+    odometer bigint,
+    color string,
+    age int,
+
+    price string,
+    mkt_avg_price string,
+
+    adjusted_pct_of_market string,
+    adj_cost_to_market string,
+
+    appraised_value string,
+    appraiser string,
+    book string,
+    cost string,
+    water string,
+    markup string,
+    last_change string,
+
+    overall int,
+    like_mine int,
+
+    price_rank_description string,
+    vrank_description string,
+
+    autotrader_list_price string,
+    autotrader_odometer bigint,
+    autotrader_image_count int,
+    autotrader_srp int,
+    autotrader_vdp int,
+    autotrader_pct_vdp string,
+
+    cars_list_price string,
+    cars_odometer bigint,
+    cars_image_count int,
+    cars_srp int,
+    cars_vdp int,
+    cars_pct_vdp string,
+
+    provisioning_grade string
+    )
+    PARTITIONED BY (
+        year string,
+        month string,
+        day string
+    )
+    STORED AS PARQUET
+    LOCATION 's3://{bucket}/{project_name}/'  
+    
+    """
+
+    execution_id = run_athena_query(query, database, athena_output)
+    wait_for_query(execution_id)
+    print(f"🆕 Athena table ensured: {table_name}")
+
+
+def repair_athena_table(database, table_name, athena_output):
+    query = f"MSCK REPAIR TABLE {table_name};"
+    execution_id = run_athena_query(query, database, athena_output)
+    wait_for_query(execution_id)
+    print("🔄 Athena partition repair completed")
+
+
 def repair_athena_table(database, table_name, athena_output):
     query = f"MSCK REPAIR TABLE {table_name};"
     logger.info(f"Query: {query}")
@@ -71,6 +184,10 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
 
     logger.info(f"Uploaded parquet to {s3_path}")
 
+    #  Ensure Athena table exists
+    if not athena_table_exists(database, table_name, athena_output):
+        create_athena_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
+    
     # Update Athena partitions
     try:
         repair_athena_table(database, table_name, athena_output)
