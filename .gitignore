@@ -33,6 +33,8 @@ archive.zip
 .DS_Store
 
 chrome_data
+chrome_data_cargurus
+chrome_data_other
 downloads
 
 .env

@@ -12,7 +12,7 @@ router = APIRouter()
 def get_scrape_service():
     return ScrapeService()
 
-@router.post("/start")
+@router.post("/vauto/start")
 async def start_scrape(
     request: StartScrapeRequest, 
     service: ScrapeService = Depends(get_scrape_service),
@@ -31,7 +31,25 @@ async def start_scrape(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/otp")
+@router.post("/cargurus/start")
+async def start_cargurus_scrape(
+    request: StartScrapeRequest,
+    service: ScrapeService = Depends(get_scrape_service)
+    user_info: dict = Depends(UserService.authenticate_token)
+):
+    username = request.username or os.getenv("CARGURUS_USERNAME")
+    password = request.password or os.getenv("CARGURUS_PASSWORD")
+    
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and Password required for CarGurus")
+
+    try:
+        result = await service.start_cargurus_login_flow(username, password)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/vauto/otp")
 async def submit_otp(
     request: OtpRequest, 
     service: ScrapeService = Depends(get_scrape_service),

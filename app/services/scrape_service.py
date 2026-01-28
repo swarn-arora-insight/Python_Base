@@ -21,13 +21,17 @@ SESSIONS: Dict[str, webdriver.Chrome] = {}
 
 class ScrapeService:
     @staticmethod
-    def setup_driver():
+    def setup_driver(webpage):
         # Define paths - adapting to be relative to the service or project root
         # Assuming run from project root or handling absolute paths carefully
         base_dir = os.getcwd() 
         download_path = os.path.join(base_dir, "downloads")
-        profile_path = os.path.join(base_dir, "chrome_data")
-        
+        if webpage == "vauto":
+            profile_path = os.path.join(base_dir, "chrome_data")
+        elif webpage == "cargurus":
+            profile_path = os.path.join(base_dir, "chrome_data_cargurus")
+        else:
+            profile_path = os.path.join(base_dir, "chrome_data_other")
         if not os.path.exists(download_path):
             os.makedirs(download_path)
         
@@ -172,12 +176,23 @@ class ScrapeService:
                         logger.info(f"Column '{col}' normalized as STRING")
         # -------------------------------------------------------
 
+
+            # Date partitions
+            now = datetime.utcnow()
+            year = now.year
+            month = f"{now.month:02d}"
+            day = f"{now.day:02d}"
+
             # ---------- ADD EMPTY PARTITION COLUMNS ----------
             for col in ["year", "month", "day"]:
                 if col not in df.columns:
                     df[col] = None
 
             logger.info("Empty columns added: year, month, day")
+
+            df["year"] = year
+            df["month"] = month
+            df["day"] = day
 
 
             # S3 Upload Constants
@@ -210,7 +225,7 @@ class ScrapeService:
         session_id = str(uuid.uuid4())
         logger.info(f"Starting new session: {session_id}")
         
-        driver = self.setup_driver()
+        driver = self.setup_driver("vauto")
         SESSIONS[session_id] = driver
 
         try:
@@ -272,6 +287,25 @@ class ScrapeService:
         
         except Exception as e:
             logger.error(f"Error in submit_otp_flow: {e}")
+            self.close_driver_safely(session_id)
+            raise e
+
+    async def start_cargurus_login_flow(self, username: str, password: str) -> Dict[str, str]:
+        session_id = str(uuid.uuid4())
+        logger.info(f"Starting new CarGurus session: {session_id}")
+        
+        driver = self.setup_driver("cargurus")
+        SESSIONS[session_id] = driver
+
+        try:
+            self._perform_cargurus_login_actions(driver, username, password)
+            self._perform_cargurus_post_login_actions(driver)
+            self.close_driver_safely(session_id)
+            # self.upload_latest_file_to_s3() # Uncomment if we actually download a file
+            
+            return {"status": "success", "message": "CarGurus scrape completed successfully."}
+        except Exception as e:
+            logger.error(f"Error in start_cargurus_login_flow: {e}")
             self.close_driver_safely(session_id)
             raise e
 
@@ -343,3 +377,130 @@ class ScrapeService:
         
         logger.info("Excel download initiated")
         time.sleep(10)
+
+    def _perform_cargurus_login_actions(self, driver, username, password):
+        # Using the URL provided by the user
+        url = "https://www.cargurus.com/Cars/dealerdashboard/app/home?tmLogin=true&serviceProvider=sp291629"
+        driver.get(url)
+        logger.info("Navigated to CarGurus Login Page")
+        time.sleep(5)
+        if "cargurus.com/Cars/dealerdashboard/app/home" in driver.current_url:
+             logger.info("Successfully redirected to CarGurus domain.")
+        else:
+            # 1. Enter Email
+            username_field = self.get_element(driver, By.ID, "username")
+            username_field.clear()
+            username_field.send_keys(username)
+            logger.info("CarGurus email entered")
+            
+            # 2. Click "Continue with email"
+            continue_btn = self.get_element(driver, By.ID, "kc-login")
+            self.click_element(driver, continue_btn)
+            logger.info("CarGurus continue button clicked")
+            
+            # 3. Wait for Password field (Assuming it appears after email)
+            # Note: The exact ID might depend on the next page, but often it's 'password'
+            password_field = self.get_element(driver, By.ID, "password", timeout=10)
+            password_field.send_keys(password)
+            logger.info("CarGurus password entered")
+            
+            # 4. Submit (Button might be same 'kc-login' or different)
+            # Re-fetching login button just in case
+            login_btn = self.get_element(driver, By.ID, "kc-login")
+            self.click_element(driver, login_btn)
+            logger.info("CarGurus login form submitted")
+            
+            time.sleep(5)
+        
+    def _perform_cargurus_post_login_actions(self, driver):
+        logger.info("Performing CarGurus post-login actions...")
+        # Placeholder: Verify login? Navigate?
+        if "cargurus.com/Cars/dealerdashboard/app/home" in driver.current_url:
+            logger.info("Successfully redirected to CarGurus domain.")
+
+            # Handle "Promote the right cars" popup
+            try:
+                logger.info("Checking for post-login popup...")
+                # Using the specific class from user provided HTML, but XPATH text is more readable and likely stable enough for "Close"
+                # The user HTML: <button class="hRxAe jve5q" type="button">Close</button>
+                # OR <button aria-label="Close dialog" ...>
+                
+                # Trying specifically the "Close" text button first as it matches the user's intent to "close this pop"
+                close_btn = self.get_element(driver, By.XPATH, "//button[text()='Close']", timeout=10)
+                if close_btn:
+                    self.click_element(driver, close_btn)
+                    logger.info("Popup closed using 'Close' button.")
+                else:
+                    logger.info("'Close' button not found, checking for 'Close dialog' icon...")
+                    close_icon = self.get_element(driver, By.XPATH, "//button[@aria-label='Close dialog']", timeout=5)
+                    if close_icon:
+                        self.click_element(driver, close_icon)
+                        logger.info("Popup closed using 'Close dialog' icon.")
+            except Exception as e:
+                logger.warning(f"Popup close attempted but failed or popup not present: {e}")
+
+            # Navigate to PriceVantage
+            try:
+                logger.info("Navigating to PriceVantage...")
+                price_vantage_link = self.get_element(driver, By.XPATH, "//a[@title='PriceVantage']")
+                if price_vantage_link:
+                    self.click_element(driver, price_vantage_link)
+                    logger.info("Clicked PriceVantage link.")
+                    time.sleep(3) # Wait for page load
+                else:
+                    logger.warning("PriceVantage link not found")
+            except Exception as e:
+                logger.error(f"Failed to navigate to PriceVantage: {e}")
+                return
+
+            stores = [
+                "Palm Beach Mitsubishi",
+                "Taverna Chrysler Dodge Jeep Ram Fiat",
+                "Taverna INFINITI North Miami"
+            ]
+
+            for store in stores:
+                try:
+                    logger.info(f"Processing store: {store}")
+                    
+                    # Open Dealership Selector
+                    logger.info("Opening dealership selector...")
+                    dealership_dropdown = self.get_element(driver, By.XPATH, "//button[@aria-label='Change dealership']")
+                    if dealership_dropdown:
+                        self.click_element(driver, dealership_dropdown)
+                        time.sleep(2)
+                    else:
+                        logger.warning("Dealership dropdown not found")
+                    
+                    # Select Store
+                    # Assuming the dropdown items are listed and clickable by text
+                    # We try multiple strategies to find the store in the dropdown
+                    logger.info(f"Selecting {store}...")
+                    store_option = self.get_element(driver, By.XPATH, f"//span[contains(text(), '{store}')] | //div[contains(text(), '{store}')]")
+                    if store_option:
+                        self.click_element(driver, store_option)
+                        logger.info(f"Selected {store}.")
+                        time.sleep(3) # Wait for data to reload for the selected store
+                    else:
+                        logger.warning(f"Store '{store}' not found in dropdown")
+
+                    # Click Export
+                    logger.info("Clicking Export button...")
+                    export_btn = self.get_element(driver, By.XPATH, "//button[contains(text(), 'Export')]")
+                    if export_btn:
+                        self.click_element(driver, export_btn)
+                        logger.info(f"Export initiated for {store}.")
+                        
+                        # Wait for download (adjust time as needed based on file size/network)
+                        time.sleep(2)
+                    else:
+                        logger.warning("Export button not found")
+
+                except Exception as e:
+                    logger.error(f"Error processing store {store}: {e}")
+                    continue
+            logger.info("All stores processed11.")
+            time.sleep(8)
+            logger.info("All stores processed.")
+        else:
+            logger.info("Failed to redirect to CarGurus domain.")    
