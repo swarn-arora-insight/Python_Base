@@ -17,6 +17,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
+base_dir = os.getcwd()
 
 # Global Session Store: {session_id: driver}
 # In a production environment, this might need more robust handling (e.g., Redis + Grid)
@@ -28,15 +29,19 @@ class ScrapeService:
     def setup_driver(webpage):
         # Define paths - adapting to be relative to the service or project root
         # Assuming run from project root or handling absolute paths carefully
-        base_dir = os.getcwd() 
+        # base_dir = os.getcwd() 
         download_path = os.path.join(base_dir, "downloads")
         if webpage == "vauto":
             profile_path = os.path.join(base_dir, "chrome_data")
+            download_path = os.path.join(base_dir, "downloads", "vauto")
         elif webpage == "cargurus":
             profile_path = os.path.join(base_dir, "chrome_data_cargurus")
+            download_path = os.path.join(base_dir, "downloads", "cargurus")
         else:
             profile_path = os.path.join(base_dir, "chrome_data_other")
+            download_path = os.path.join(base_dir, "downloads", "other")
         if not os.path.exists(download_path):
+            logger.info(f"Download path does not exist: {download_path}")
             os.makedirs(download_path)
         
         logger.info(f"Download path set to: {download_path}")
@@ -117,11 +122,17 @@ class ScrapeService:
 
     # --- Flows ---
 
-    def upload_latest_file_to_s3(self):
+    def upload_latest_file_to_s3(self, webpage: str):
         try:
-            download_path = os.path.join(os.getcwd(), "downloads")
+            if webpage == "vauto":
+                download_path = os.path.join(base_dir, "downloads", "vauto")
+            elif webpage == "cargurus":
+                download_path = os.path.join(base_dir, "downloads", "cargurus")
+            else:
+                download_path = os.path.join(base_dir, "downloads", "other")
             # Get list of files in download path
             list_of_files = glob.glob(os.path.join(download_path, "*")) 
+            logger.info(f"List of files found: {list_of_files}")
             
             if not list_of_files:
                 logger.warning("No files found in downloads directory to upload.")
@@ -242,7 +253,7 @@ class ScrapeService:
             else:
                 self._perform_post_login_actions(driver, report_name)
                 self.close_driver_safely(session_id)
-                self.upload_latest_file_to_s3()
+                self.upload_latest_file_to_s3("vauto")
                 
                 return {"status": "success", "message": "Scrape completed successfully (No 2FA needed)."}
         except Exception as e:
@@ -285,7 +296,7 @@ class ScrapeService:
             self._perform_post_login_actions(driver, report_name)
             self.close_driver_safely(session_id)
             
-            self.upload_latest_file_to_s3()
+            self.upload_latest_file_to_s3("vauto")
             return {"status": "success", "message": "Scrape completed successfully."}
         
         except Exception as e:
@@ -305,7 +316,7 @@ class ScrapeService:
             self._perform_cargurus_post_login_actions(driver)
             self.close_driver_safely(session_id)
             # self.upload_latest_file_to_s3() # Uncomment if we actually download a file
-            
+            self.upload_latest_file_to_s3("cargurus")
             return {"status": "success", "message": "CarGurus scrape completed successfully."}
         except Exception as e:
             logger.error(f"Error in start_cargurus_login_flow: {e}")
@@ -462,6 +473,10 @@ class ScrapeService:
                 "Taverna INFINITI North Miami"
             ]
 
+            downloaded_files_map = [] # List of tuples (store_name, file_path)
+            download_path = os.path.join(base_dir, "downloads", "cargurus")
+            logger.info(f"Download path: {download_path}")
+            
             for store in stores:
                 try:
                     logger.info(f"Processing store: {store}")
@@ -476,17 +491,18 @@ class ScrapeService:
                         logger.warning("Dealership dropdown not found")
                     
                     # Select Store
-                    # Assuming the dropdown items are listed and clickable by text
-                    # We try multiple strategies to find the store in the dropdown
                     logger.info(f"Selecting {store}...")
                     store_option = self.get_element(driver, By.XPATH, f"//span[contains(text(), '{store}')] | //div[contains(text(), '{store}')]")
                     if store_option:
                         self.click_element(driver, store_option)
                         logger.info(f"Selected {store}.")
-                        time.sleep(3) # Wait for data to reload for the selected store
+                        time.sleep(3) # Wait for data to reload
                     else:
                         logger.warning(f"Store '{store}' not found in dropdown")
 
+                    # Capture files before export
+                    before_files = set(glob.glob(os.path.join(download_path, "*")))
+                    logger.info(f"Files before export: {before_files}")
                     # Click Export
                     logger.info("Clicking Export button...")
                     export_btn = self.get_element(driver, By.XPATH, "//button[contains(text(), 'Export')]")
@@ -494,16 +510,73 @@ class ScrapeService:
                         self.click_element(driver, export_btn)
                         logger.info(f"Export initiated for {store}.")
                         
-                        # Wait for download (adjust time as needed based on file size/network)
-                        time.sleep(2)
+                        # Wait for NEW file to appear
+                        timeout = 60
+                        end_time = time.time() + timeout
+                        new_file = None
+                        logger.info("Waiting for new file to appear...")
+                        while time.time() < end_time:
+                            logger.info(f"Files in download folder: {glob.glob(os.path.join(download_path, "*"))}")
+                            current_files = set(glob.glob(os.path.join(download_path, "*")))
+                            new_files = current_files - before_files
+                            if new_files:
+                                logger.info(f"New files found: {new_files}")
+                                # Filter out crdownload or tmp files if necessary, usually standard excel extensions are final
+                                valid_new_files = [f for f in new_files if not f.endswith('.crdownload') and not f.endswith('.tmp')]
+                                if valid_new_files:
+                                    new_file = valid_new_files[0] # Take the first new file found
+                                    break
+                            time.sleep(1)
+                        
+                        if new_file:
+                            logger.info(f"New file file detected for {store}: {new_file}")
+                            downloaded_files_map.append((store, new_file))
+                        else:
+                            logger.warning(f"Timeout waiting for file download for {store}")
+
                     else:
                         logger.warning("Export button not found")
 
                 except Exception as e:
                     logger.error(f"Error processing store {store}: {e}")
                     continue
-            logger.info("All stores processed11.")
-            time.sleep(8)
-            logger.info("All stores processed.")
+            
+            logger.info("All stores processed. Starting aggregation...")
+            
+            if downloaded_files_map:
+                try:
+                    all_dfs = []
+                    for store_name, file_path in downloaded_files_map:
+                        try:
+                            if file_path.endswith('.csv'):
+                                df = pd.read_csv(file_path)
+                            elif file_path.endswith(('.xls', '.xlsx')):
+                                df = pd.read_excel(file_path)
+                            else:
+                                continue
+                            
+                            df['store'] = store_name
+                            all_dfs.append(df)
+                        except Exception as e:
+                            logger.error(f"Error reading file {file_path}: {e}")
+                    
+                    if all_dfs:
+                        final_df = pd.concat(all_dfs, ignore_index=True)
+                        timestamp = datetime.now().strftime("%m.%d.%Y__%H:%M:%S")
+                        combined_filename = f"CarGurus_Aggregated__{timestamp}.xlsx"
+                        combined_path = os.path.join(download_path, combined_filename)
+                        
+                        final_df.to_excel(combined_path, index=False)
+                        logger.info(f"Aggregated file saved to: {combined_path}")
+                        
+                        # Trigger upload for this specific file, or rely on upload_latest_file_to_s3 picking it up
+                        # Since upload_latest_file_to_s3 picks the latest file, and we just saved this, it should work.
+                        # self.upload_latest_file_to_s3("cargurus")
+                    else:
+                        logger.warning("No dataframes to aggregate.")
+                except Exception as e:
+                    logger.error(f"Error during aggregation: {e}")
+            else:
+                logger.warning("No files downloaded to aggregate.")
         else:
             logger.info("Failed to redirect to CarGurus domain.")    
