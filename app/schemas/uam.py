@@ -50,4 +50,24 @@ class OrgDetails(BaseModel):
 class CreateOrg(BaseModel):
     token:str
     org_name:str
-    
+
+class EditOrg(BaseModel):
+    token:str
+    org_name:str
+    org_id:str
+
+class DeleteOrg(BaseModel):
+    token:str
+    org_id:str
+
+class RoleDetails(BaseModel):
+    token:str
+
+class CreateRole(BaseModel):
+    token:str
+    role_name:str
+
+class EditRole(BaseModel):
+    token:str
+    role_name:str
+    role_id:str

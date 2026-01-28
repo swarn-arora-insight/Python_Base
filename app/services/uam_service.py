@@ -34,8 +34,8 @@ class UAMService:
         if not org_name:
             return 400, "Organization name cannot be empty"
 
-        if len(org_name) < 3 or len(org_name) > 100:
-            return 400, "Organization name must be between 3 and 100 characters"
+        if len(org_name) < 2 or len(org_name) > 100:
+            return 400, "Organization name must be between 2 and 100 characters"
 
         if not re.match(r"^[A-Za-z0-9 _-]+$", org_name):
             return 400, "Organization name contains invalid characters"
@@ -44,5 +44,23 @@ class UAMService:
             return 400, "Organization name must contain at least one alphabet"
         
         return 200, "Organization name is valid"
+
+    async def check_role_name(self, role_name: str):
+        if not isinstance(role_name, str):
+            return 400, "Role name must be a string"
+
+        if not role_name:
+            return 400, "Role name cannot be empty"
+
+        if len(role_name) < 2 or len(role_name) > 100:
+            return 400, "Role name must be between 2 and 100 characters"
+
+        if not re.match(r"^[A-Za-z0-9 _-]+$", role_name):
+            return 400, "Role name contains invalid characters"
+        
+        if not re.search(r"[A-Za-z]", role_name):
+            return 400, "Role name must contain at least one alphabet"
+        
+        return 200, "Role name is valid"
 
     

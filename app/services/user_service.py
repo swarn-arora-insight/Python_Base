@@ -10,7 +10,7 @@ from fastapi import Depends, HTTPException, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from services.email_verification import send_email_verification_mail
-from typing import Union
+from typing import Union, List
 import bcrypt
 import os, json
 from datetime import datetime, timedelta
@@ -69,6 +69,10 @@ class UserService:
             return True
         return False
 
+    async def get_all_users(self) -> List:
+        users = await self.user_repo.get_all_users()
+        return [UserOut.from_orm(user) for user in users] if users else None
+    
     @staticmethod
     async def authenticate_token(
         credentials: HTTPAuthorizationCredentials = Depends(SECURITY),

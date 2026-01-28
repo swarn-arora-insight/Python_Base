@@ -5,14 +5,12 @@ from sqlalchemy.future import select
 from core.db import get_db
 from repositories.user_repo import UserRepository
 from services.user_service import UserService
-from schemas.user import UserCreate, UserUpdate, UserOut,UserRegistration
-from schemas.user import LoginCreate, LoginResponse
+from schemas.user import *
 from utils.init_db import hash_password
 from models.user import User
 from core.security import RequiresFeature
 from core.logging import logger
 from models.constants import UserMessages
-from schemas.user import LoginRequest
 from utils.init_db import verify_password
 import uuid
 import datetime
@@ -212,6 +210,43 @@ async def login_user_with_credentials(response: Response, payload: LoginRequest,
             },
             "response": {},
         }
+
+
+
+@router.post("/getusers")
+async def user_list(payload: UserList, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+    """Fetch all organizations accessible to an authenticated user."""
+    if len(auth_payload) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    service = UserRepository(db)
+    token_data = await service.get_token_data(payload.token)
+    if len(token_data) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    user_details = await service.get_all_users()
+
+    return {
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": user_details
+    }
+
+
 
 @router.post("/logout")
 async def logout_user(user_info: dict = Depends(UserService.authenticate_token), db: AsyncSession = Depends(get_db)):

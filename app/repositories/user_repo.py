@@ -21,7 +21,7 @@ class UserRepository:
         return result.scalars().first()
 
     async def get_all_users(self):
-        result = await self.db.execute(select(User))
+        result = await self.db.execute(select(User.first_name, User.last_name))
         return result.scalars().all()
 
     async def create_user(self, user: User) -> User:
