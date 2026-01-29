@@ -100,7 +100,7 @@ class UAMRepository:
 
         return role_details
     
-    async def get_role_by_key(self, payload: dict) -> Optional[Organization]:
+    async def get_role_by_key(self, payload: dict) -> Optional[Role]:
         if "role_name" in payload:
             result = await self.db.execute(select(Role.role_id, Role.role_name).where(Role.role_name == payload["role_name"], Role.is_active == 1).order_by(Role.id.asc()))
             return [{"role_id": row.role_id, "role_name": row.role_name} for row in result.all()]

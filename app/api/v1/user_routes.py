@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from core.db import get_db
 from repositories.user_repo import UserRepository
+from repositories.uam_repo import UAMRepository
 from services.user_service import UserService
 from schemas.user import *
 from utils.init_db import hash_password
@@ -94,68 +95,68 @@ router = APIRouter()
 
 
 
-@router.post("/signup")
-async def user_signup(
-    request: UserRegistration,
-    db: AsyncSession = Depends(get_db),
-    ):
-    """
-    API for user registration.
+# @router.post("/signup")
+# async def user_signup(
+#     request: UserRegistration,
+#     db: AsyncSession = Depends(get_db),
+#     ):
+#     """
+#     API for user registration.
 
-    Args:
-        request (UserRegistration): The payload containing user registration details.
+#     Args:
+#         request (UserRegistration): The payload containing user registration details.
 
-    Returns:
-        dict: Success or failure message after processing the registration.
-    """
-    user_service = UserService(UserRepository(db))
-    try:
-        # Call the service to add the user
-        result = await user_service.add_user(
-            first_name=request.first_name,
-            last_name=request.last_name,
-            age=request.age,
-            address=request.address,
-            email=request.email_address,
-            password=request.password,
-            org_id=request.org_id,
-            role_id=request.role_id,
-        )
-        # Check the result and respond accordingly
-        if result == "Success":
-            return {
-                "header": {
-                    "code": 200,
-                    "message": UserMessages.SUCCESS,
-                },
-                "response": {},
-            }
+#     Returns:
+#         dict: Success or failure message after processing the registration.
+#     """
+#     user_service = UserService(UserRepository(db))
+#     try:
+#         # Call the service to add the user
+#         result = await user_service.add_user(
+#             first_name=request.first_name,
+#             last_name=request.last_name,
+#             age=request.age,
+#             address=request.address,
+#             email=request.email_address,
+#             password=request.password,
+#             org_id=request.org_id,
+#             role_id=request.role_id,
+#         )
+#         # Check the result and respond accordingly
+#         if result == "Success":
+#             return {
+#                 "header": {
+#                     "code": 200,
+#                     "message": UserMessages.SUCCESS,
+#                 },
+#                 "response": {},
+#             }
 
-        return {
-            "header": {
-                "code": 400,
-                "message": result,  # Provide the failure reason as the message
-            },
-            "response": {},
-        }
-    except HTTPException as e:
-        logger.warning(f"HTTPException: {e.detail}")
-        return {
-            "header": {
-                "code": e.status_code,
-                "message": e.detail,
-            },
-            "response": {},
-        }
-    except Exception as e:
-        logger.error(f"Error in user_signup: {str(e)}")
-        return {
-            "header": {
-                "code": 500,
-                "message": UserMessages.INTERNAL_SERVER_ERROR,
-            },
-            "response": {},
-        }
+#         return {
+#             "header": {
+#                 "code": 400,
+#                 "message": result,  # Provide the failure reason as the message
+#             },
+#             "response": {},
+#         }
+#     except HTTPException as e:
+#         logger.warning(f"HTTPException: {e.detail}")
+#         return {
+#             "header": {
+#                 "code": e.status_code,
+#                 "message": e.detail,
+#             },
+#             "response": {},
+#         }
+#     except Exception as e:
+#         logger.error(f"Error in user_signup: {str(e)}")
+#         return {
+#             "header": {
+#                 "code": 500,
+#                 "message": UserMessages.INTERNAL_SERVER_ERROR,
+#             },
+#             "response": {},
+#         }
 
 
 @router.post("/login")
@@ -248,51 +249,153 @@ async def user_list(payload: UserList, auth_payload: dict = Depends(UserService.
 
 
 
-@router.post("/logout")
-async def logout_user(user_info: dict = Depends(UserService.authenticate_token), db: AsyncSession = Depends(get_db)):
-    """Ensures user logout
-
-    Args:
-        user_info (str, optional):
-        _description_. Defaults to Depends(USER_LOGIN.authenticate_token).
-    Returns:
-        _type_: _description_
-    """
-    try:
-        user_service = UserService(UserRepository(db))
-        valid, user_info = user_info
-        if valid and  await user_service.logout_user(user_info["user_id"]):
-            return {
-                    "header": {
-                        "code": 200,
-                        "message": UserMessages.LOGOUT_SUCCESS,
-                    },
-                    "response": {}
-                    }
+@router.post("/createuser")
+async def create_user(payload: CreateUser, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+    """Fetch all organizations accessible to an authenticated user."""
+    if len(auth_payload) == 0:
         return {
             "header": {
                 "code": 400,
-                "message": UserMessages.INVALID_CREDENTIALS,  # Provide the failure reason as the message
+                "message": UserMessages.INVALID_CREDENTIALS,
             },
             "response": {},
         }
+    
+    service = UserRepository(db)
+    token_data = await service.get_token_data(payload.token)
+    if len(token_data) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    first_name = payload.first_name
+    last_name = payload.last_name
+    email_address = payload.email_address
+    password = payload.password
+    org_id = payload.org_id
+    role_id = payload.role_id
+    
+    email_data = await service.get_user_by_email({"email": payload.email_address})
+    if len(email_data) != 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Email already exists",
+            },
+            "response": {},
+        }
+
+    user_service = UserService(db)
+    valid, message = await user_service.validate_user_details({"first_name": first_name, "last_name": last_name})
+    if valid != 200:
+        return {
+            "header": {
+                "code": valid,
+                "message": message,
+            },
+            "response": {},
+        }
+    valid, message = await user_service.validate_password({"password": password})
+    if valid != 200:
+        return {
+            "header": {
+                "code": valid,
+                "message": message,
+            },
+            "response": {},
+        }
+
+    uam_repo = UAMRepository(db)
+    org_details = await uam_repo.get_org_by_key({"org_id": org_id})
+    if len(org_details) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Invalid Organization",
+            },
+            "response": {},
+        }
+    
+    role_details = await uam_repo.get_role_by_key({"role_id": role_id})
+    if len(role_details) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Invalid Role",
+            },
+            "response": {},
+        }
+    password = hash_password(password)
+    user_details = await service.add_user({"first_name": first_name, "last_name": last_name, "email": email_address, "password": password, "org_id": org_id, "role_id": role_id,"user_id": str(uuid.uuid4()), "auth_key": str(uuid.uuid4()) })
+    if not user_details:
+        return {
+            "header": {
+                "code": 400,
+                "message": "User not created",
+            },
+            "response": {},
+        }
+
+    return {
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {}
+    }
+
+
+
+
+# @router.post("/logout")
+# async def logout_user(user_info: dict = Depends(UserService.authenticate_token), db: AsyncSession = Depends(get_db)):
+#     """Ensures user logout
+
+#     Args:
+#         user_info (str, optional):
+#         _description_. Defaults to Depends(USER_LOGIN.authenticate_token).
+#     Returns:
+#         _type_: _description_
+#     """
+#     try:
+#         user_service = UserService(UserRepository(db))
+#         valid, user_info = user_info
+#         if valid and  await user_service.logout_user(user_info["user_id"]):
+#             return {
+#                     "header": {
+#                         "code": 200,
+#                         "message": UserMessages.LOGOUT_SUCCESS,
+#                     },
+#                     "response": {}
+#                     }
+#         return {
+#             "header": {
+#                 "code": 400,
+#                 "message": UserMessages.INVALID_CREDENTIALS,  # Provide the failure reason as the message
+#             },
+#             "response": {},
+#         }
         
-    except HTTPException as e:
-        logger.warning(f"HTTPException: {e.detail}")
-        return {
-            "header": {
-                "code": e.status_code,
-                "message": e.detail,
-            },
-            "response": {},
-        }
-    except Exception as e:
-        logger.error(f"Error in login_user_with_credentials: {str(e)}")
-        return {
-            "header": {
-                "code": 500,
-                "message": UserMessages.INTERNAL_SERVER_ERROR,  # Use predefined user message for errors
-            },
-            "response": {},
-        }
-        return HTTPResponse().failed(response_code=401)
+#     except HTTPException as e:
+#         logger.warning(f"HTTPException: {e.detail}")
+#         return {
+#             "header": {
+#                 "code": e.status_code,
+#                 "message": e.detail,
+#             },
+#             "response": {},
+#         }
+#     except Exception as e:
+#         logger.error(f"Error in login_user_with_credentials: {str(e)}")
+#         return {
+#             "header": {
+#                 "code": 500,
+#                 "message": UserMessages.INTERNAL_SERVER_ERROR,  # Use predefined user message for errors
+#             },
+#             "response": {},
+#         }
+#         return HTTPResponse().failed(response_code=401)

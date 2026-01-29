@@ -15,18 +15,18 @@ class User(Base):
     user_id = Column(String(36), unique=True, nullable=False, index=True)
     first_name = Column(String(50), nullable=False)
     last_name = Column(String(50), nullable=False)
-    age = Column(Integer, nullable=False)
-    address = Column(String(255), nullable=False)
+    age = Column(Integer, nullable=True, default=0)
+    address = Column(String(255), nullable=True)
     token = Column(String(255), nullable=True)
     email = Column(String(100), unique=True, index=True, nullable=False)
     password = Column(String(255), nullable=False)
-    is_active = Column(Integer, default=1) # 1 = Active, 0 = Inactive
+    is_active = Column(Integer, nullable=True, default=1) # 1 = Active, 0 = Inactive
     last_logged_in = Column(DateTime, nullable=True)  # Optional field
     created_on = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)  # Auto-set timestamp
     auth_key=Column(String(255), nullable=True)
-    is_auth = Column(Integer, default=0)
+    is_auth = Column(Integer, nullable=True, default=0)
     
-    # Foreign Keys
+    # Foreign Keys 
     org_id = Column(String(500), ForeignKey("organizations.org_id"), nullable=True)
     role_id = Column(String(500), ForeignKey("roles.role_id"), nullable=True)
     

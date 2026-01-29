@@ -12,7 +12,7 @@ import jwt
 from services.email_verification import send_email_verification_mail
 from typing import Union, List
 import bcrypt
-import os, json
+import os, json, re
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from core.db import get_db
@@ -257,6 +257,33 @@ class UserService:
             )
             
 
+    async def validate_user_details(self, payload: dict) -> tuple:
+        for key, value in payload.items():
+            if not value:
+                return 400, f"{key} cannot be empty"
+            if len(value) < 2:
+                return 400, f"{key} must be at least 2 characters long"
+            if not re.match(r"^[A-Za-z0-9 _-]+$", value):
+                return 400, f"{key} contains invalid characters"
+        
+        return 200, "User details are valid"
+    
+    
+    async def validate_password(self, payload: dict):
+        password = payload.get("password")
+        if not isinstance(password, str):
+            return 400, "Password must be a string"
 
-    
-    
+        if not password:
+            return 400, "Password cannot be empty"
+
+        if len(password) < 8 or len(password) > 100:
+            return 400, "Password must be between 8 and 100 characters"
+
+        if not re.search(r"[A-Za-z]", password):
+            return 400, "Password must contain at least one alphabet"
+        
+        if not re.search(r"[0-9]", password):
+            return 400, "Password must contain at least one number"
+        
+        return 200, "Password is valid"

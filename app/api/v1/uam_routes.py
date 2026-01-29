@@ -505,22 +505,22 @@ async def edit_role(payload: EditRole, auth_payload: dict = Depends(UserService.
 #     return await service.get_organizations()
 
 # Roles
-@router.post("/roles", response_model=RoleOut)
-async def add_role(role: RoleCreate, service: UAMService = Depends(get_uam_service)):
-    return await service.create_role(role)
+# @router.post("/roles", response_model=RoleOut)
+# async def add_role(role: RoleCreate, service: UAMService = Depends(get_uam_service)):
+#     return await service.create_role(role)
 
-@router.get("/roles", response_model=List[RoleOut])
-async def list_roles(service: UAMService = Depends(get_uam_service)):
-    return await service.get_roles()
+# @router.get("/roles", response_model=List[RoleOut])
+# async def list_roles(service: UAMService = Depends(get_uam_service)):
+#     return await service.get_roles()
 
-@router.post("/roles/{role_id}/features", response_model=RoleOut)
-async def assign_role_features(role_id: int, features: FeatureAssign, service: UAMService = Depends(get_uam_service)):
-    role = await service.assign_features(role_id, features)
-    if not role:
-        raise HTTPException(status_code=404, detail="Role not found")
-    return role
+# @router.post("/roles/{role_id}/features", response_model=RoleOut)
+# async def assign_role_features(role_id: int, features: FeatureAssign, service: UAMService = Depends(get_uam_service)):
+#     role = await service.assign_features(role_id, features)
+#     if not role:
+#         raise HTTPException(status_code=404, detail="Role not found")
+#     return role
 
-# Features
-@router.get("/features", response_model=List[FeatureOut])
-async def list_features(service: UAMService = Depends(get_uam_service)):
-    return await service.get_features()
+# # Features
+# @router.get("/features", response_model=List[FeatureOut])
+# async def list_features(service: UAMService = Depends(get_uam_service)):
+#     return await service.get_features()

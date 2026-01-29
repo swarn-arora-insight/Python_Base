@@ -5,7 +5,8 @@ from models.user import User
 from core.logging import logger
 from typing import Any, Dict, Optional, List
 from sqlalchemy import update
-
+from models.uam import Role
+from models.uam import Organization
 import base64
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
@@ -21,14 +22,38 @@ class UserRepository:
         return result.scalars().first()
 
     async def get_all_users(self):
-        result = await self.db.execute(select(User.first_name, User.last_name))
-        return result.scalars().all()
+        role_result = await self.db.execute(select(Role.role_id,Role.role_name).where(Role.is_active == 1))
+        role_list, org_list = {}, {}
+        for row in role_result.all():
+            role_list[row.role_id] = row.role_name
+
+        org_result = await self.db.execute(select(Organization.org_id,Organization.org_name).where(Organization.is_active == 1))
+        for row in org_result.all():
+            org_list[row.org_id] = row.org_name 
+
+        user_result = await self.db.execute(select(User.first_name,User.last_name,User.email,User.role_id,User.org_id,User.user_id).where(User.is_active == 1))
+        user_list = []
+        for row in user_result.all():
+            user_list.append({"first_name": row.first_name,"last_name": row.last_name,"email": row.email,"role": role_list.get(row.role_id,""),"org": org_list.get(row.org_id,""),"user_id": row.user_id})
+        return user_list
 
     async def create_user(self, user: User) -> User:
         self.db.add(user)
         await self.db.commit()
         await self.db.refresh(user)
         return user
+
+    async def add_user(self, user_details: Dict[str, Any]):
+        # try:
+        logger.info("Adding new user.")
+        user_instance = User(**user_details)
+        self.db.add(user_instance)
+        await self.db.commit()
+        await self.db.refresh(user_instance)
+        return user_instance
+        # except Exception as e:
+        #     logger.error(f"Error adding user: {str(e)}")
+        #     raise
 
     async def update_user(self, user: User, updates: dict) -> User:
         for field, value in updates.items():
@@ -152,6 +177,16 @@ class UserRepository:
         except Exception as e:
             logger.info(f"Error with token data: {str(e)}")
             return []    
+
+    async def get_user_by_email(self, payload:dict) -> List:
+        try:
+            email = payload['email']
+            result = await self.db.execute(select(User.user_id).where(User.email == email, User.is_active == 1))
+            user_data = [{"user_id": row.user_id} for row in result.all()]
+            return user_data
+        except Exception as e:
+            logger.info(f"Error with user data: {str(e)}")
+            return []
 
     async def store_auth_key(self, user_id: int, auth_key: str) -> None:
         """

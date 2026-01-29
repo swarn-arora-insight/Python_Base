@@ -73,3 +73,12 @@ class UserOut(UserBase):
 
 class UserList(BaseModel):
     token: str
+
+class CreateUser(BaseModel):
+    token: str
+    first_name: str
+    last_name: str
+    org_id: Optional[str]
+    role_id: Optional[str]
+    email_address: EmailStr
+    password: str
