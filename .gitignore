@@ -36,5 +36,6 @@ chrome_data
 chrome_data_cargurus
 chrome_data_other
 downloads
+validated
 
 .env

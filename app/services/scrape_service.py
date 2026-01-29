@@ -19,6 +19,13 @@ from dotenv import load_dotenv
 load_dotenv()
 base_dir = os.getcwd()
 
+# S3 Upload Constants
+BUCKET = os.getenv("S3_BUCKET")
+PROJECT_NAME = os.getenv("S3_PROJECT_NAME")
+ATHENA_DB = os.getenv("ATHENA_DB")
+ATHENA_TABLE = os.getenv("ATHENA_TABLE")
+ATHENA_OUTPUT = os.getenv("ATHENA_OUTPUT")
+
 # Global Session Store: {session_id: driver}
 # In a production environment, this might need more robust handling (e.g., Redis + Grid)
 # but for this standalone service, a global dict works.
@@ -165,30 +172,30 @@ class ScrapeService:
             for col in df.columns:
                 if df[col].dtype == "object":
 
-                    # Try to understand if column is numeric
-                    numeric_ratio = (
-                        pd.to_numeric(df[col], errors="coerce")
-                        .notna()
-                        .mean()
-                    )
+                    # # Try to understand if column is numeric
+                    # numeric_ratio = (
+                    #     pd.to_numeric(df[col], errors="coerce")
+                    #     .notna()
+                    #     .mean()
+                    # )
 
-                    if numeric_ratio > 0.8:
-                        # Mostly numeric → clean & convert
-                        df[col] = (
-                            df[col]
-                            .astype(str)
-                            .str.replace(",", "", regex=False)
-                        )
-                        df[col] = pd.to_numeric(df[col], errors="coerce")
-                        logger.info(f"Column '{col}' normalized as NUMERIC")
-                    else:
+                    # if numeric_ratio > 0.8:
+                    #     # Mostly numeric → clean & convert
+                    #     df[col] = (
+                    #         df[col]
+                    #         .astype(str)
+                    #         .str.replace(",", "", regex=False)
+                    #     )
+                    #     df[col] = pd.to_numeric(df[col], errors="coerce")
+                    #     logger.info(f"Column '{col}' normalized as NUMERIC")
+                    # else:
                         # Mostly text → force string
-                        df[col] = (
-                            df[col]
-                            .astype(str)
-                            .replace("nan", None)
-                        )
-                        logger.info(f"Column '{col}' normalized as STRING")
+                    df[col] = (
+                        df[col]
+                        .astype(str)
+                        .replace("nan", None)
+                    )
+                    logger.info(f"Column '{col}' normalized as STRING")
         # -------------------------------------------------------
 
 
@@ -201,23 +208,39 @@ class ScrapeService:
             # ---------- ADD EMPTY PARTITION COLUMNS ----------
             for col in ["year", "month", "day"]:
                 if col not in df.columns:
+                    logger.info(f"Adding empty column: {col}")
                     df[col] = None
 
             logger.info("Empty columns added: year, month, day")
-
+            logger.info(f"Year: {year}, Month: {month}, Day: {day}")
             df["year"] = year
             df["month"] = month
             df["day"] = day
 
+            #test
+            validated_path = os.path.join(base_dir, "validated", webpage)
+            os.makedirs(validated_path, exist_ok=True)
+            # ---------- SAVE LOCALLY FOR VERIFICATION ----------
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 
-            # S3 Upload Constants
+            local_csv = os.path.join(
+                validated_path,
+                f"{webpage}_validated_{timestamp}.csv"
+            )
 
-            BUCKET = os.getenv("S3_BUCKET")
-            PROJECT_NAME = os.getenv("S3_PROJECT_NAME")
-            ATHENA_DB = os.getenv("ATHENA_DB")
-            ATHENA_TABLE = os.getenv("ATHENA_TABLE")
-            ATHENA_OUTPUT = os.getenv("ATHENA_OUTPUT")
-            
+            local_parquet = os.path.join(
+                validated_path,
+                f"{webpage}_validated_{timestamp}.parquet"
+            )
+
+            df.to_csv(local_csv, index=False)
+            df.to_parquet(local_parquet, index=False)
+
+            logger.info(f"Local CSV saved for validation: {local_csv}")
+            logger.info(f"Local Parquet saved for validation: {local_parquet}")
+            # --------------------------------------------------
+
+
 
             # Upload to S3
             s3_path = upload_df_to_s3_parquet(
@@ -542,7 +565,7 @@ class ScrapeService:
                     continue
             
             logger.info("All stores processed. Starting aggregation...")
-            
+            logger.info(f"Downloaded files map: {downloaded_files_map}")
             if downloaded_files_map:
                 try:
                     all_dfs = []
@@ -562,7 +585,7 @@ class ScrapeService:
                     
                     if all_dfs:
                         final_df = pd.concat(all_dfs, ignore_index=True)
-                        timestamp = datetime.now().strftime("%m.%d.%Y__%H:%M:%S")
+                        timestamp = datetime.now().strftime("%m.%d.%Y__%H-%M-%S")
                         combined_filename = f"CarGurus_Aggregated__{timestamp}.xlsx"
                         combined_path = os.path.join(download_path, combined_filename)
                         
