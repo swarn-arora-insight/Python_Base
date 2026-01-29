@@ -232,30 +232,7 @@ class UserService:
                 status_code=500, detail=UserMessages.INTERNAL_SERVER_ERROR  
             )
     
-    async def logout_user(self, user_id: str) -> bool:
-        """
-        Logs out a user by clearing their token.
-
-        Args:
-            user_id (str): The unique identifier for the user.
-
-        Returns:
-            bool: True if the user was successfully logged out, False otherwise.
-        """
-        try:
-            user = await self.user_repo._find_user_by_user_id(user_id)
-            if user:
-                user["token"] = ""
-                await self.user_repo.upsert_item(user)
-                return True
-
-            return False
-        except Exception as e:
-            logger.error(f"Error logout user: {str(e)}")
-            raise HTTPException(
-                status_code=500, detail=UserMessages.INTERNAL_SERVER_ERROR  
-            )
-            
+             
 
     async def validate_user_details(self, payload: dict) -> tuple:
         for key, value in payload.items():

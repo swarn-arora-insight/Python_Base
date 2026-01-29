@@ -62,9 +62,9 @@ class UserRepository:
         await self.db.refresh(user)
         return user
 
-    async def delete_user(self, user: User):
-        await self.db.delete(user)
-        await self.db.commit()
+    # async def delete_user(self, user: User):
+    #     await self.db.delete(user)
+    #     await self.db.commit()
 
     async def _find_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """
@@ -178,15 +178,55 @@ class UserRepository:
             logger.info(f"Error with token data: {str(e)}")
             return []    
 
-    async def get_user_by_email(self, payload:dict) -> List:
+    async def get_user_by_detail(self, payload:dict) -> List:
         try:
-            email = payload['email']
-            result = await self.db.execute(select(User.user_id).where(User.email == email, User.is_active == 1))
-            user_data = [{"user_id": row.user_id} for row in result.all()]
-            return user_data
+            if "email" in payload:
+                email = payload['email']
+                result = await self.db.execute(select(User.user_id).where(User.email == email, User.is_active == 1))
+                user_data = [{"user_id": row.user_id} for row in result.all()]
+                return user_data
+            elif "user_id" in payload:
+                user_id = payload['user_id']
+                result = await self.db.execute(select(User.user_id).where(User.user_id == user_id, User.is_active == 1))
+                user_data = [{"user_id": row.user_id} for row in result.all()]
+                return user_data
         except Exception as e:
             logger.info(f"Error with user data: {str(e)}")
             return []
+    
+    async def delete_user(self, payload:dict) -> tuple:
+        try:
+            user_id = payload['user_id']
+            user = await self.db.scalar(
+                select(User).where(User.user_id == user_id)
+            )
+            if not user:
+                return 404, "User not found"
+            
+            user.is_active = 0
+
+            await self.db.commit()
+            return 200, "Success"
+        except Exception as e:
+            logger.info(f"Error with user data: {str(e)}")
+            return 500, str(e)
+
+    async def delete_token(self, token: str) -> tuple:
+        try:
+            token = token
+            user = await self.db.scalar(
+                select(User).where(User.token == token)
+            )
+            if not user:
+                return 404, "User not found"
+            
+            user.token = None
+
+            await self.db.commit()
+            return 200, "Success"
+        except Exception as e:
+            logger.info(f"Error with user data: {str(e)}")
+            return 500, str(e)
 
     async def store_auth_key(self, user_id: int, auth_key: str) -> None:
         """

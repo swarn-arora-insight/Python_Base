@@ -82,3 +82,10 @@ class CreateUser(BaseModel):
     role_id: Optional[str]
     email_address: EmailStr
     password: str
+
+class DeleteUser(BaseModel):
+    token: str
+    user_id: str
+
+class LogoutUser(BaseModel):
+    token: str
