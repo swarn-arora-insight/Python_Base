@@ -64,3 +64,14 @@ class UAMService:
         return 200, "Role name is valid"
 
     
+    async def validate_feature_name(self, feature_grp_name: str):
+        if not isinstance(feature_grp_name, str):
+            return 400, "Feature group name must be a string"
+
+        if not feature_grp_name:
+            return 400, "Feature group name cannot be empty"
+
+        if len(feature_grp_name) < 2 or len(feature_grp_name) > 100:
+            return 400, "Feature group name must be between 2 and 100 characters"
+        
+        return 200, "Feature group name is valid"

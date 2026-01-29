@@ -2,7 +2,7 @@
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
-from models.uam import Organization, Role, Feature
+from models.uam import Organization, Role, Feature, FeatureGroup, RoleFeature
 from models.user import User
 from typing import List, Optional
 
@@ -136,47 +136,139 @@ class UAMRepository:
         except Exception as e:
             return 500, str(e)
     
-    # async def create_org(self, name: str, code: str) -> Organization:
-    #     org = Organization(name=name, code=code)
-    #     self.db.add(org)
-    #     await self.db.commit()
-    #     await self.db.refresh(org)
-    #     return org
-
-
-    # async def get_all_roles(self) -> List[Role]:
-    #     result = await self.db.execute(select(Role))
-    #     return result.scalars().unique().all()
     
-    async def get_role_by_id(self, role_id: int) -> Optional[Role]:
-        result = await self.db.execute(
-            select(Role).options(joinedload(Role.features)).where(Role.id == role_id)
-        )
-        return result.scalars().first()
-
     # Feature
-    async def create_feature(self, name: str, key: str, description: str = None) -> Feature:
-        feature = Feature(name=name, key=key, description=description)
-        self.db.add(feature)
-        await self.db.commit()
-        await self.db.refresh(feature)
-        return feature
+    async def get_feature_group_by_key(self, payload: dict) -> Optional[FeatureGroup]:
+        if "feature_grp_name" in payload:
+            result = await self.db.execute(select(FeatureGroup.feature_grp_id, FeatureGroup.feature_grp_name).where(FeatureGroup.feature_grp_name == payload["feature_grp_name"]).order_by(FeatureGroup.id.asc()))
+            data = [{"feature_grp_id": row.feature_grp_id, "feature_grp_name": row.feature_grp_name} for row in result.all()]
+            return data
+        elif "feature_grp_id" in payload:
+            result = await self.db.execute(select(FeatureGroup.feature_grp_id, FeatureGroup.feature_grp_name).where(FeatureGroup.feature_grp_id == payload["feature_grp_id"]).order_by(FeatureGroup.id.asc()))
+            return [{"feature_grp_id": row.feature_grp_id, "feature_grp_name": row.feature_grp_name} for row in result.all()]
+    
+    async def get_all_feature_groups(self):
+        result = await self.db.execute(select(FeatureGroup.feature_grp_id, FeatureGroup.feature_grp_name).order_by(FeatureGroup.id.asc()))
+        return [{"feature_grp_id": row.feature_grp_id, "feature_grp_name": row.feature_grp_name} for row in result.all()]
+    
+    async def feature_group_entry(self, payload: dict) -> tuple:
+        try:
+            if payload["action"] == "create":
+                feature_group = FeatureGroup(feature_grp_name=payload["feature_grp_name"], feature_grp_id=payload["feature_grp_id"], updated_by=payload["updated_by"])
+                self.db.add(feature_group)
+                await self.db.commit()
+                await self.db.refresh(feature_group)
+                return 200, "Success"
+            elif payload["action"] == "edit":
+                feature_group = await self.db.scalar(
+                    select(FeatureGroup).where(FeatureGroup.feature_grp_id == payload["feature_grp_id"])
+                )
+                if not feature_group:
+                    return 404, "Feature group not found"
+                
+                result = await self.db.execute(select(FeatureGroup.feature_grp_id, FeatureGroup.feature_grp_name).where(FeatureGroup.feature_grp_name == payload["feature_grp_name"], FeatureGroup.feature_grp_id != payload["feature_grp_id"], FeatureGroup.is_active == 1))
+                check_feature_group = [{"feature_grp_id": row.feature_grp_id, "feature_grp_name": row.feature_grp_name} for row in result.all()]
+                if len(check_feature_group) > 0:
+                    return 400, "Feature group name already exists."
+                
+                feature_group.feature_grp_name = payload["feature_grp_name"]
+                feature_group.updated_by = payload["updated_by"]
 
-    async def get_all_features(self) -> List[Feature]:
-        result = await self.db.execute(select(Feature))
-        return result.scalars().all()
+                await self.db.commit()
+                return 200, "Success"
+        except Exception as e:
+            return 500, str(e)
 
-    async def assign_features_to_role(self, role_id: int, feature_ids: List[int]) -> Role:
-        role = await self.get_role_by_id(role_id)
-        if not role:
-            return None
-        
-        # Clear existing features (simple strategy) or Add new ones. 
-        # Here we fetch features and replace.
-        result = await self.db.execute(select(Feature).where(Feature.id.in_(feature_ids)))
-        features = result.scalars().all()
-        
-        role.features = features
-        await self.db.commit()
-        await self.db.refresh(role)
+    async def get_feature_by_key(self, payload: dict) -> Optional[Feature]:
+        if "feature_name" in payload:
+            result = await self.db.execute(select(Feature.feature_id, Feature.feature_name).where(Feature.feature_name == payload["feature_name"]).order_by(Feature.id.asc()))
+            data = [{"feature_id": row.feature_id, "feature_name": row.feature_name} for row in result.all()]
+            return data
+        elif "feature_id" in payload:
+            result = await self.db.execute(select(Feature.feature_id, Feature.feature_name).where(Feature.feature_id == payload["feature_id"]).order_by(Feature.id.asc()))
+            return [{"feature_id": row.feature_id, "feature_name": row.feature_name} for row in result.all()]
+
+    async def get_all_feature(self):
+        result = await self.db.execute(select(Feature.feature_id, Feature.feature_name).order_by(Feature.id.asc()))
+        return [{"feature_id": row.feature_id, "feature_name": row.feature_name} for row in result.all()]
+    
+    async def feature_entry(self, payload: dict) -> tuple:
+        try:
+            if payload["action"] == "create":
+                feature = Feature(feature_name=payload["feature_name"], feature_id=payload["feature_id"], feature_grp_id=payload["feature_grp_id"], updated_by=payload["updated_by"])
+                self.db.add(feature)
+                await self.db.commit()
+                await self.db.refresh(feature)
+                return 200, "Success"
+            elif payload["action"] == "edit":
+                feature = await self.db.scalar(
+                    select(Feature).where(Feature.feature_id == payload["feature_id"])
+                )
+                if not feature:
+                    return 404, "Feature not found"
+                
+                result = await self.db.execute(select(FeatureGroup.feature_grp_id, FeatureGroup.feature_grp_name).where(FeatureGroup.feature_grp_name == payload["feature_grp_name"], FeatureGroup.feature_grp_id != payload["feature_grp_id"], FeatureGroup.is_active == 1))
+                check_feature_group = [{"feature_grp_id": row.feature_grp_id, "feature_grp_name": row.feature_grp_name} for row in result.all()]
+                if len(check_feature_group) > 0:
+                    return 400, "Feature group name already exists."
+                
+                feature_group.feature_grp_name = payload["feature_grp_name"]
+                feature_group.updated_by = payload["updated_by"]
+
+                await self.db.commit()
+                return 200, "Success"
+        except Exception as e:
+            return 500, str(e)
+
+    
+    # Role Feature Mapping
+    async def get_role_feature_mapping(self, role_id: str) -> Optional[RoleFeature]:
+        result = await self.db.execute(select(RoleFeature.feature_id, RoleFeature.permission_level).where(RoleFeature.role_id == role_id).order_by(RoleFeature.id.asc()))
+        role_feature = []
+        for row in result.all():
+            feature_name, feature_grp_id, feature_grp_name ="","", "" 
+            
+            feature_data = await self.db.execute(select(Feature.feature_name, Feature.feature_grp_id).where(Feature.feature_id == row.feature_id))
+            feature_data = feature_data.all()
+            if feature_data:
+                feature_name = feature_data[0].feature_name
+                feature_grp_id = feature_data[0].feature_grp_id
+                feature_grp_name = await self.db.scalar(select(FeatureGroup.feature_grp_name).where(FeatureGroup.feature_grp_id == feature_grp_id))
+            
+            role_feature.append({"feature_id": row.feature_id, "feature_name": feature_name, "access": row.permission_level, "feature_grp_id": feature_grp_id, "feature_grp_name": feature_grp_name})
+        return role_feature
+    
+    async def feature_role_mapping(self, role_id: str, feature_id: str) -> Optional[RoleFeature]:
+        result = await self.db.execute(select(RoleFeature.role_id, RoleFeature.feature_id).where(RoleFeature.role_id == role_id, RoleFeature.feature_id == feature_id))
+        role_feature = result.all()
+        return role_feature
+    
+    async def get_role_by_id(self, role_id: str) -> Optional[Role]:
+        result = await self.db.execute(select(Role.role_id, Role.role_name).where(Role.role_id == role_id))
+        role = result.all()
         return role
+
+    async def create_feature_role_mapping(self, payload) ->tuple:
+        try:
+            if payload["action"] == "create":
+                role_feature = RoleFeature(role_id=payload["role_id"], feature_id=payload["feature_id"], permission_level=payload["permission_level"], updated_by=payload["updated_by"])
+                self.db.add(role_feature)
+                await self.db.commit()
+                await self.db.refresh(role_feature)
+                return 200, "Success"
+            elif payload["action"] == "edit":
+                role_feature = await self.db.scalar(
+                    select(RoleFeature.role_id, RoleFeature.feature_id).where(RoleFeature.role_id == payload["role_id"], RoleFeature.feature_id == payload["feature_id"])
+                )
+                if not role_feature:
+                    return 404, "Role feature not found"
+                
+                role_feature.permission_level = payload["permission_level"]
+                role_feature.updated_by = payload["updated_by"]
+
+                await self.db.commit()
+                return 200, "Success"
+        except Exception as e:
+            return 500, str(e)
+
+    

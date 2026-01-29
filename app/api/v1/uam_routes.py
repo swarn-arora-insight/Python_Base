@@ -496,31 +496,308 @@ async def edit_role(payload: EditRole, auth_payload: dict = Depends(UserService.
         }
 
 
-# @router.post("/orgs", response_model=OrganizationOut)
-# async def add_org(org: OrganizationCreate, service: UAMService = Depends(get_uam_service)):
-#     return await service.create_organization(org)
 
-# @router.get("/orgs", response_model=List[OrganizationOut])
-# async def list_orgs(service: UAMService = Depends(get_uam_service)):
-#     return await service.get_organizations()
+@router.post("/createfeaturegrp")
+async def create_feature_grp(payload: CreateFeatureGroup, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+    """Create a new feature group."""
+    if len(auth_payload) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    service = UserRepository(db)
+    token_data = await service.get_token_data(payload.token)
+    if len(token_data) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    uam_service = UAMService(db)
+    feature_grp_name = payload.feature_grp_name.strip()
+    code, message = await uam_service.validate_feature_name(feature_grp_name)
+    
+    if code != 200:
+        return {
+            "header": {
+                "code": code,
+                "message": message,
+            },
+            "response": {},
+        }
+    
+    uam_repo = UAMRepository(db)
+    
+    fetch_feature_group = await uam_repo.get_feature_group_by_key({"feature_grp_name": feature_grp_name})
+    if len(fetch_feature_group) > 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Feature group name already exists.",
+            },
+            "response": {},
+        }
+    
+    feature_groups = await uam_repo.get_all_feature_groups()    
+    if not feature_groups:
+        next_feature_grp_id = "FGR00001"
+    else:
+        last_number = max(int(feature_group["feature_grp_id"][3:]) for feature_group in feature_groups)
+        next_feature_grp_id = f"FGR{last_number + 1:04d}"
 
-# Roles
-# @router.post("/roles", response_model=RoleOut)
-# async def add_role(role: RoleCreate, service: UAMService = Depends(get_uam_service)):
-#     return await service.create_role(role)
+    payload = {
+        "feature_grp_name": feature_grp_name,
+        "feature_grp_id": next_feature_grp_id,
+        "updated_by": token_data[0]["user_id"],
+        "action": "create"
+    }
+ 
+    code, feature_group_entry_message = await uam_repo.feature_group_entry(payload)
+    if code != 200:
+        return {
+            "header": {
+                "code": code,
+                "message": feature_group_entry_message,
+            },
+            "response": {},
+        }
 
-# @router.get("/roles", response_model=List[RoleOut])
-# async def list_roles(service: UAMService = Depends(get_uam_service)):
-#     return await service.get_roles()
+    return {
+            "header": {
+                "code": 200,
+                "message": UserMessages.SUCCESS,
+            },
+            "response": {},
+        }
 
-# @router.post("/roles/{role_id}/features", response_model=RoleOut)
-# async def assign_role_features(role_id: int, features: FeatureAssign, service: UAMService = Depends(get_uam_service)):
-#     role = await service.assign_features(role_id, features)
-#     if not role:
-#         raise HTTPException(status_code=404, detail="Role not found")
-#     return role
 
-# # Features
-# @router.get("/features", response_model=List[FeatureOut])
-# async def list_features(service: UAMService = Depends(get_uam_service)):
-#     return await service.get_features()
+
+
+@router.post("/createfeature")
+async def create_feature(payload: CreateFeature, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+    """Create a new feature."""
+    if len(auth_payload) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    service = UserRepository(db)
+    token_data = await service.get_token_data(payload.token)
+    if len(token_data) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    uam_service = UAMService(db)
+    feature_name = payload.feature_name.strip()
+    feature_grp_id = payload.feature_grp_id.strip()
+    code, message = await uam_service.validate_feature_name(feature_name)
+    
+    if code != 200:
+        return {
+            "header": {
+                "code": code,
+                "message": message,
+            },
+            "response": {},
+        }
+    
+    uam_repo = UAMRepository(db)
+    
+    fetch_feature_group = await uam_repo.get_feature_group_by_key({"feature_grp_id": feature_grp_id})
+    if len(fetch_feature_group) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Feature group not found.",
+            },
+            "response": {},
+        }
+    
+    get_feature_by_key = await uam_repo.get_feature_by_key({"feature_name": feature_name})
+    if len(get_feature_by_key) > 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Feature name already exists.",
+            },
+            "response": {},
+        }
+    
+    get_feature = await uam_repo.get_all_feature()    
+    if not get_feature:
+        next_feature_id = "F00001"
+    else:
+        last_number = max(int(feature["feature_id"][1:]) for feature in get_feature)
+        next_feature_id = f"F{last_number + 1:04d}"
+
+    payload = {
+        "feature_name": feature_name,
+        "feature_id": next_feature_id,
+        "feature_grp_id": feature_grp_id,
+        "updated_by": token_data[0]["user_id"],
+        "action": "create"
+    }
+ 
+    code, feature_entry_message = await uam_repo.feature_entry(payload)
+    if code != 200:
+        return {
+            "header": {
+                "code": code,
+                "message": feature_entry_message,
+            },
+            "response": {},
+        }
+
+    return {
+            "header": {
+                "code": 200,
+                "message": UserMessages.SUCCESS,
+            },
+            "response": {},
+        }
+
+
+
+@router.post("/featurerolelist")
+async def feature_role_list(payload: FeatureRoleList, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+    """Fetch all features accessible to an authenticated user."""
+    if len(auth_payload) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    service = UserRepository(db)
+    token_data = await service.get_token_data(payload.token)
+    if len(token_data) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    uam_service = UAMRepository(db)
+    role_feature_mapping = await uam_service.get_role_feature_mapping(role_id=payload.role_id)
+
+    return {
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": role_feature_mapping
+    }
+
+
+
+@router.post("/assignfeaturetorole")
+async def assign_feature_to_role(payload: AssignFeatureToRole, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+    """Assign features to a role."""
+    if len(auth_payload) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    service = UserRepository(db)
+    token_data = await service.get_token_data(payload.token)
+    if len(token_data) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+    
+    role_id=payload.role_id
+    feature_id=payload.feature_id
+    permission_level=payload.permission_level
+    
+    uam_service = UAMRepository(db)
+    role_feature_mapping = await uam_service.feature_role_mapping(role_id, feature_id)
+    if len(role_feature_mapping) > 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Feature already assigned to role.",
+            },
+            "response": {},
+        }
+    
+    role_id_list = await uam_service.get_role_feature_mapping(role_id)
+    if len(role_id_list) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Role not found.",
+            },
+            "response": {},
+        }
+    
+    role_id_list = await uam_service.get_feature_by_key({"feature_id":feature_id})
+    if len(role_id_list) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Feature not found.",
+            },
+            "response": {},
+        }
+    
+    if str(permission_level) not in ["1","2","3","4"]:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Invalid permission level.",
+            },
+            "response": {},
+        }
+
+    payload = {
+        "role_id": role_id,
+        "feature_id": feature_id,
+        "permission_level": permission_level,
+        "updated_by": token_data[0]["user_id"],
+        "action": "create"
+    }
+    
+    code, role_feature_mapping = await uam_service.create_feature_role_mapping(payload)
+    if code != 200:
+        return {
+            "header": {
+                "code": code,
+                "message": role_feature_mapping,
+            },
+            "response": {},
+        }
+    return {
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {}
+    }

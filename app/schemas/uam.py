@@ -71,3 +71,22 @@ class EditRole(BaseModel):
     token:str
     role_name:str
     role_id:str
+
+class CreateFeatureGroup(BaseModel):
+    token:str
+    feature_grp_name:str
+
+class CreateFeature(BaseModel):
+    token:str
+    feature_name:str
+    feature_grp_id:str
+
+class FeatureRoleList(BaseModel):
+    token:str
+    role_id:str
+
+class AssignFeatureToRole(BaseModel):
+    token:str
+    role_id:str
+    feature_id:str
+    permission_level:int

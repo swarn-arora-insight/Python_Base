@@ -1,5 +1,6 @@
 # app/models/uam.py
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Table, DateTime, func
+from sqlalchemy.dialects.mysql import TINYINT
 from sqlalchemy.orm import relationship
 from models.base import Base
 
@@ -23,15 +24,24 @@ class Organization(Base):
 
     users = relationship("User", back_populates="organization")
 
-class Feature(Base):
-    __tablename__ = "features"
+class FeatureGroup(Base):
+    __tablename__ = "feature_grp"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False) # Display Name
-    key = Column(String(100), unique=True, index=True, nullable=False) # strict key e.g. 'user_create'
-    description = Column(String(255), nullable=True)
+    feature_grp_id = Column(String(200), unique=True, index=True, nullable=False)
+    feature_grp_name = Column(String(100), unique=True, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
+    updated_by = Column(String(200), nullable=True)
 
-    # roles = relationship("Role", secondary=role_feature_association, back_populates="features")
+class Feature(Base):
+    __tablename__ = "feature"
+
+    id = Column(Integer, primary_key=True, index=True)
+    feature_id = Column(String(200), unique=True, index=True, nullable=False)
+    feature_name = Column(String(100), unique=True, nullable=False)
+    feature_grp_id = Column(String(200), unique=True, index=True, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
+    updated_by = Column(String(200), nullable=True)
 
 class Role(Base):
     __tablename__ = "roles"
@@ -45,3 +55,14 @@ class Role(Base):
     
     # One-to-Many with Users
     users = relationship("User", back_populates="role")
+
+
+class RoleFeature(Base):
+    __tablename__ = "role_feature_mapping"
+
+    id = Column(Integer, primary_key=True, index=True)
+    role_id = Column(String(200), index=True, nullable=False)
+    feature_id = Column(String(200), index=True, nullable=False)
+    permission_level = Column(TINYINT(4), nullable=False, default=1)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
+    updated_by = Column(String(200), nullable=True)
