@@ -24,7 +24,7 @@ myenv2
 docs.zip
 archive.zip
 app/core/config.py
-
+.uam_access_log
 # vim temporary files
 *~
 .*.sw?

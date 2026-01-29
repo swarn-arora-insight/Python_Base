@@ -10,14 +10,18 @@ from models.constants import UserMessages
 from services.user_service import UserService
 from repositories.user_repo import UserRepository
 
+
 router = APIRouter()
 
 def get_uam_service(db: AsyncSession = Depends(get_db)) -> UAMService:
     return UAMService(UAMRepository(db))
 
-
 @router.post("/tabslist")
-async def tabslist(payload: TabsList, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db)):
+async def tabslist(
+    payload: TabsList,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
     """Return the list of accessible UI tabs for an authenticated user."""
     if len(auth_payload) == 0:
         return {
@@ -27,7 +31,7 @@ async def tabslist(payload: TabsList, auth_payload: dict = Depends(UserService.r
             },
             "response": {},
         }
-    
+
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
@@ -44,20 +48,10 @@ async def tabslist(payload: TabsList, auth_payload: dict = Depends(UserService.r
             "tab_name": "Organizations",
             "access": 1,
             "add_button": "Organization",
-            "icon": "Building2"
+            "icon": "Building2",
         },
-        {
-            "tab_name": "Roles",
-            "access": 1,
-            "add_button": "Role",
-            "icon": "Shield"
-        },
-        {
-            "tab_name": "Users",
-            "access": 1,
-            "add_button": "User",
-            "icon": "Users"
-        }
+        {"tab_name": "Roles", "access": 1, "add_button": "Role", "icon": "Shield"},
+        {"tab_name": "Users", "access": 1, "add_button": "User", "icon": "Users"},
     ]
 
     return {
@@ -65,12 +59,16 @@ async def tabslist(payload: TabsList, auth_payload: dict = Depends(UserService.r
             "code": 200,
             "message": UserMessages.SUCCESS,
         },
-        "response": tab_data
+        "response": tab_data,
     }
 
 
 @router.post("/getorgs")
-async def org_details(payload: OrgDetails, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+async def org_details(
+    payload: OrgDetails,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
     """Fetch all organizations accessible to an authenticated user."""
     if len(auth_payload) == 0:
         return {
@@ -80,7 +78,7 @@ async def org_details(payload: OrgDetails, auth_payload: dict = Depends(UserServ
             },
             "response": {},
         }
-    
+
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
@@ -91,7 +89,7 @@ async def org_details(payload: OrgDetails, auth_payload: dict = Depends(UserServ
             },
             "response": {},
         }
-    
+
     uam_service = UAMRepository(db)
     org_details = await uam_service.get_all_orgs()
 
@@ -100,12 +98,16 @@ async def org_details(payload: OrgDetails, auth_payload: dict = Depends(UserServ
             "code": 200,
             "message": UserMessages.SUCCESS,
         },
-        "response": org_details
+        "response": org_details,
     }
 
 
 @router.post("/createorg")
-async def create_org(payload: CreateOrg, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+async def create_org(
+    payload: CreateOrg,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
     """Create a new organization."""
     if len(auth_payload) == 0:
         return {
@@ -115,7 +117,7 @@ async def create_org(payload: CreateOrg, auth_payload: dict = Depends(UserServic
             },
             "response": {},
         }
-    
+
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
@@ -126,11 +128,11 @@ async def create_org(payload: CreateOrg, auth_payload: dict = Depends(UserServic
             },
             "response": {},
         }
-    
+
     uam_service = UAMService(db)
     org_name = payload.org_name.strip()
     code, message = await uam_service.check_org_name(org_name)
-    
+
     if code != 200:
         return {
             "header": {
@@ -139,9 +141,9 @@ async def create_org(payload: CreateOrg, auth_payload: dict = Depends(UserServic
             },
             "response": {},
         }
-    
+
     uam_repo = UAMRepository(db)
-    
+
     fetch_org = await uam_repo.get_org_by_key({"org_name": org_name})
     if len(fetch_org) > 0:
         return {
@@ -151,8 +153,8 @@ async def create_org(payload: CreateOrg, auth_payload: dict = Depends(UserServic
             },
             "response": {},
         }
-    
-    orgs = await uam_repo.get_all_orgs()    
+
+    orgs = await uam_repo.get_all_orgs()
     if not orgs:
         next_org_id = "ORG00001"
     else:
@@ -163,9 +165,9 @@ async def create_org(payload: CreateOrg, auth_payload: dict = Depends(UserServic
         "org_name": org_name,
         "org_id": next_org_id,
         "updated_by": token_data[0]["user_id"],
-        "action": "create"
+        "action": "create",
     }
- 
+
     code, org_entry_message = await uam_repo.org_entry(payload)
     if code != 200:
         return {
@@ -175,18 +177,22 @@ async def create_org(payload: CreateOrg, auth_payload: dict = Depends(UserServic
             },
             "response": {},
         }
-
+    UserService.update_uam_log(token_data[0]["user_id"], "createorg", payload)
     return {
-            "header": {
-                "code": 200,
-                "message": UserMessages.SUCCESS,
-            },
-            "response": {},
-        }
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {},
+    }
 
 
 @router.post("/editorg")
-async def edit_org(payload: EditOrg, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+async def edit_org(
+    payload: EditOrg,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
     """Edit organization detail."""
     if len(auth_payload) == 0:
         return {
@@ -196,7 +202,7 @@ async def edit_org(payload: EditOrg, auth_payload: dict = Depends(UserService.re
             },
             "response": {},
         }
-    
+
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
@@ -207,7 +213,7 @@ async def edit_org(payload: EditOrg, auth_payload: dict = Depends(UserService.re
             },
             "response": {},
         }
-    
+
     org_id = payload.org_id
     org_name = payload.org_name.strip()
 
@@ -226,9 +232,9 @@ async def edit_org(payload: EditOrg, auth_payload: dict = Depends(UserService.re
         "org_name": org_name,
         "org_id": org_id,
         "updated_by": token_data[0]["user_id"],
-        "action": "edit"
+        "action": "edit",
     }
- 
+
     code, org_entry_message = await uam_repo.org_entry(payload)
     if code != 200:
         return {
@@ -238,18 +244,22 @@ async def edit_org(payload: EditOrg, auth_payload: dict = Depends(UserService.re
             },
             "response": {},
         }
-
+    UserService.update_uam_log(token_data[0]["user_id"], "editorg", payload)
     return {
-            "header": {
-                "code": 200,
-                "message": UserMessages.SUCCESS,
-            },
-            "response": {},
-        }
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {},
+    }
 
 
 @router.post("/deleteorg")
-async def delete_org(payload: DeleteOrg, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+async def delete_org(
+    payload: DeleteOrg,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
     """Delete organization detail."""
     if len(auth_payload) == 0:
         return {
@@ -259,7 +269,7 @@ async def delete_org(payload: DeleteOrg, auth_payload: dict = Depends(UserServic
             },
             "response": {},
         }
-    
+
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
@@ -270,7 +280,7 @@ async def delete_org(payload: DeleteOrg, auth_payload: dict = Depends(UserServic
             },
             "response": {},
         }
-    
+
     org_id = payload.org_id
     uam_repo = UAMRepository(db)
     orgs = await uam_repo.get_org_by_key({"org_id": org_id})
@@ -282,7 +292,7 @@ async def delete_org(payload: DeleteOrg, auth_payload: dict = Depends(UserServic
             },
             "response": {},
         }
-    
+
     payload = {
         "org_id": org_id,
         "updated_by": token_data[0]["user_id"],
@@ -296,18 +306,22 @@ async def delete_org(payload: DeleteOrg, auth_payload: dict = Depends(UserServic
             },
             "response": {},
         }
-    
+    UserService.update_uam_log(token_data[0]["user_id"], "deleteorg", payload)
     return {
-            "header": {
-                "code": 200,
-                "message": UserMessages.SUCCESS,
-            },
-            "response": {},
-        }
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {},
+    }
 
 
 @router.post("/getroles")
-async def get_roles(payload: RoleDetails, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+async def get_roles(
+    payload: RoleDetails,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
     """Fetch all roles."""
     if len(auth_payload) == 0:
         return {
@@ -317,7 +331,7 @@ async def get_roles(payload: RoleDetails, auth_payload: dict = Depends(UserServi
             },
             "response": {},
         }
-    
+
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
@@ -328,7 +342,7 @@ async def get_roles(payload: RoleDetails, auth_payload: dict = Depends(UserServi
             },
             "response": {},
         }
-    
+
     uam_service = UAMRepository(db)
     role_details = await uam_service.get_all_roles()
 
@@ -337,12 +351,16 @@ async def get_roles(payload: RoleDetails, auth_payload: dict = Depends(UserServi
             "code": 200,
             "message": UserMessages.SUCCESS,
         },
-        "response": role_details
+        "response": role_details,
     }
 
 
 @router.post("/createrole")
-async def create_role(payload: CreateRole, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+async def create_role(
+    payload: CreateRole,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
     """Create a new role."""
     if len(auth_payload) == 0:
         return {
@@ -352,7 +370,7 @@ async def create_role(payload: CreateRole, auth_payload: dict = Depends(UserServ
             },
             "response": {},
         }
-    
+
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
@@ -363,11 +381,11 @@ async def create_role(payload: CreateRole, auth_payload: dict = Depends(UserServ
             },
             "response": {},
         }
-    
+
     uam_service = UAMService(db)
     role_name = payload.role_name.strip()
     code, message = await uam_service.check_role_name(role_name)
-    
+
     if code != 200:
         return {
             "header": {
@@ -376,9 +394,9 @@ async def create_role(payload: CreateRole, auth_payload: dict = Depends(UserServ
             },
             "response": {},
         }
-    
+
     uam_repo = UAMRepository(db)
-    
+
     fetch_role = await uam_repo.get_role_by_key({"role_name": role_name})
     if len(fetch_role) > 0:
         return {
@@ -388,8 +406,8 @@ async def create_role(payload: CreateRole, auth_payload: dict = Depends(UserServ
             },
             "response": {},
         }
-    
-    roles = await uam_repo.get_all_roles()    
+
+    roles = await uam_repo.get_all_roles()
     if not roles:
         next_role_id = "R00001"
     else:
@@ -400,9 +418,9 @@ async def create_role(payload: CreateRole, auth_payload: dict = Depends(UserServ
         "role_name": role_name,
         "role_id": next_role_id,
         "updated_by": token_data[0]["user_id"],
-        "action": "create"
+        "action": "create",
     }
- 
+
     code, role_entry_message = await uam_repo.role_entry(payload)
     if code != 200:
         return {
@@ -412,18 +430,22 @@ async def create_role(payload: CreateRole, auth_payload: dict = Depends(UserServ
             },
             "response": {},
         }
-
+    UserService.update_uam_log(token_data[0]["user_id"], "createrole", payload)
     return {
-            "header": {
-                "code": 200,
-                "message": UserMessages.SUCCESS,
-            },
-            "response": {},
-        }
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {},
+    }
 
 
 @router.post("/editrole")
-async def edit_role(payload: EditRole, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+async def edit_role(
+    payload: EditRole,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
     """Edit a role."""
     if len(auth_payload) == 0:
         return {
@@ -433,7 +455,7 @@ async def edit_role(payload: EditRole, auth_payload: dict = Depends(UserService.
             },
             "response": {},
         }
-    
+
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
@@ -444,11 +466,11 @@ async def edit_role(payload: EditRole, auth_payload: dict = Depends(UserService.
             },
             "response": {},
         }
-    
+
     uam_service = UAMService(db)
     role_name = payload.role_name.strip()
     code, message = await uam_service.check_role_name(role_name)
-    
+
     if code != 200:
         return {
             "header": {
@@ -457,9 +479,9 @@ async def edit_role(payload: EditRole, auth_payload: dict = Depends(UserService.
             },
             "response": {},
         }
-    
+
     uam_repo = UAMRepository(db)
-    
+
     fetch_role = await uam_repo.get_role_by_key({"role_id": payload.role_id})
     if len(fetch_role) == 0:
         return {
@@ -474,9 +496,9 @@ async def edit_role(payload: EditRole, auth_payload: dict = Depends(UserService.
         "role_name": role_name,
         "role_id": payload.role_id,
         "updated_by": token_data[0]["user_id"],
-        "action": "edit"
+        "action": "edit",
     }
- 
+
     code, role_entry_message = await uam_repo.role_entry(payload)
     if code != 200:
         return {
@@ -486,19 +508,22 @@ async def edit_role(payload: EditRole, auth_payload: dict = Depends(UserService.
             },
             "response": {},
         }
-
+    UserService.update_uam_log(token_data[0]["user_id"], "editrole", payload)
     return {
-            "header": {
-                "code": 200,
-                "message": UserMessages.SUCCESS,
-            },
-            "response": {},
-        }
-
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {},
+    }
 
 
 @router.post("/createfeaturegrp")
-async def create_feature_grp(payload: CreateFeatureGroup, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+async def create_feature_grp(
+    payload: CreateFeatureGroup,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
     """Create a new feature group."""
     if len(auth_payload) == 0:
         return {
@@ -508,7 +533,7 @@ async def create_feature_grp(payload: CreateFeatureGroup, auth_payload: dict = D
             },
             "response": {},
         }
-    
+
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
@@ -519,11 +544,11 @@ async def create_feature_grp(payload: CreateFeatureGroup, auth_payload: dict = D
             },
             "response": {},
         }
-    
+
     uam_service = UAMService(db)
     feature_grp_name = payload.feature_grp_name.strip()
     code, message = await uam_service.validate_feature_name(feature_grp_name)
-    
+
     if code != 200:
         return {
             "header": {
@@ -532,10 +557,12 @@ async def create_feature_grp(payload: CreateFeatureGroup, auth_payload: dict = D
             },
             "response": {},
         }
-    
+
     uam_repo = UAMRepository(db)
-    
-    fetch_feature_group = await uam_repo.get_feature_group_by_key({"feature_grp_name": feature_grp_name})
+
+    fetch_feature_group = await uam_repo.get_feature_group_by_key(
+        {"feature_grp_name": feature_grp_name}
+    )
     if len(fetch_feature_group) > 0:
         return {
             "header": {
@@ -544,21 +571,23 @@ async def create_feature_grp(payload: CreateFeatureGroup, auth_payload: dict = D
             },
             "response": {},
         }
-    
-    feature_groups = await uam_repo.get_all_feature_groups()    
+
+    feature_groups = await uam_repo.get_all_feature_groups()
     if not feature_groups:
         next_feature_grp_id = "FGR00001"
     else:
-        last_number = max(int(feature_group["feature_grp_id"][3:]) for feature_group in feature_groups)
+        last_number = max(
+            int(feature_group["feature_grp_id"][3:]) for feature_group in feature_groups
+        )
         next_feature_grp_id = f"FGR{last_number + 1:04d}"
 
     payload = {
         "feature_grp_name": feature_grp_name,
         "feature_grp_id": next_feature_grp_id,
         "updated_by": token_data[0]["user_id"],
-        "action": "create"
+        "action": "create",
     }
- 
+
     code, feature_group_entry_message = await uam_repo.feature_group_entry(payload)
     if code != 200:
         return {
@@ -568,20 +597,22 @@ async def create_feature_grp(payload: CreateFeatureGroup, auth_payload: dict = D
             },
             "response": {},
         }
-
+    UserService.update_uam_log(token_data[0]["user_id"], "createfeaturegroup", payload)
     return {
-            "header": {
-                "code": 200,
-                "message": UserMessages.SUCCESS,
-            },
-            "response": {},
-        }
-
-
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {},
+    }
 
 
 @router.post("/createfeature")
-async def create_feature(payload: CreateFeature, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+async def create_feature(
+    payload: CreateFeature,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
     """Create a new feature."""
     if len(auth_payload) == 0:
         return {
@@ -591,7 +622,7 @@ async def create_feature(payload: CreateFeature, auth_payload: dict = Depends(Us
             },
             "response": {},
         }
-    
+
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
@@ -602,12 +633,12 @@ async def create_feature(payload: CreateFeature, auth_payload: dict = Depends(Us
             },
             "response": {},
         }
-    
+
     uam_service = UAMService(db)
     feature_name = payload.feature_name.strip()
     feature_grp_id = payload.feature_grp_id.strip()
     code, message = await uam_service.validate_feature_name(feature_name)
-    
+
     if code != 200:
         return {
             "header": {
@@ -616,10 +647,12 @@ async def create_feature(payload: CreateFeature, auth_payload: dict = Depends(Us
             },
             "response": {},
         }
-    
+
     uam_repo = UAMRepository(db)
-    
-    fetch_feature_group = await uam_repo.get_feature_group_by_key({"feature_grp_id": feature_grp_id})
+
+    fetch_feature_group = await uam_repo.get_feature_group_by_key(
+        {"feature_grp_id": feature_grp_id}
+    )
     if len(fetch_feature_group) == 0:
         return {
             "header": {
@@ -628,8 +661,10 @@ async def create_feature(payload: CreateFeature, auth_payload: dict = Depends(Us
             },
             "response": {},
         }
-    
-    get_feature_by_key = await uam_repo.get_feature_by_key({"feature_name": feature_name})
+
+    get_feature_by_key = await uam_repo.get_feature_by_key(
+        {"feature_name": feature_name}
+    )
     if len(get_feature_by_key) > 0:
         return {
             "header": {
@@ -638,8 +673,8 @@ async def create_feature(payload: CreateFeature, auth_payload: dict = Depends(Us
             },
             "response": {},
         }
-    
-    get_feature = await uam_repo.get_all_feature()    
+
+    get_feature = await uam_repo.get_all_feature()
     if not get_feature:
         next_feature_id = "F00001"
     else:
@@ -651,9 +686,9 @@ async def create_feature(payload: CreateFeature, auth_payload: dict = Depends(Us
         "feature_id": next_feature_id,
         "feature_grp_id": feature_grp_id,
         "updated_by": token_data[0]["user_id"],
-        "action": "create"
+        "action": "create",
     }
- 
+
     code, feature_entry_message = await uam_repo.feature_entry(payload)
     if code != 200:
         return {
@@ -664,18 +699,22 @@ async def create_feature(payload: CreateFeature, auth_payload: dict = Depends(Us
             "response": {},
         }
 
+    UserService.update_uam_log(token_data[0]["user_id"], "createfeature", payload)
     return {
-            "header": {
-                "code": 200,
-                "message": UserMessages.SUCCESS,
-            },
-            "response": {},
-        }
-
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {},
+    }
 
 
 @router.post("/featurerolelist")
-async def feature_role_list(payload: FeatureRoleList, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+async def feature_role_list(
+    payload: FeatureRoleList,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
     """Fetch all features accessible to an authenticated user."""
     if len(auth_payload) == 0:
         return {
@@ -685,7 +724,7 @@ async def feature_role_list(payload: FeatureRoleList, auth_payload: dict = Depen
             },
             "response": {},
         }
-    
+
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
@@ -696,22 +735,27 @@ async def feature_role_list(payload: FeatureRoleList, auth_payload: dict = Depen
             },
             "response": {},
         }
-    
+
     uam_service = UAMRepository(db)
-    role_feature_mapping = await uam_service.get_role_feature_mapping(role_id=payload.role_id)
+    role_feature_mapping = await uam_service.get_role_feature_mapping(
+        role_id=payload.role_id
+    )
 
     return {
         "header": {
             "code": 200,
             "message": UserMessages.SUCCESS,
         },
-        "response": role_feature_mapping
+        "response": role_feature_mapping,
     }
 
 
-
 @router.post("/assignfeaturetorole")
-async def assign_feature_to_role(payload: AssignFeatureToRole, auth_payload: dict = Depends(UserService.require_authorization), db: AsyncSession = Depends(get_db) ):
+async def assign_feature_to_role(
+    payload: AssignFeatureToRole,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
     """Assign features to a role."""
     if len(auth_payload) == 0:
         return {
@@ -721,7 +765,7 @@ async def assign_feature_to_role(payload: AssignFeatureToRole, auth_payload: dic
             },
             "response": {},
         }
-    
+
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
@@ -732,11 +776,11 @@ async def assign_feature_to_role(payload: AssignFeatureToRole, auth_payload: dic
             },
             "response": {},
         }
-    
-    role_id=payload.role_id
-    feature_id=payload.feature_id
-    permission_level=payload.permission_level
-    
+
+    role_id = payload.role_id
+    feature_id = payload.feature_id
+    permission_level = payload.permission_level
+
     uam_service = UAMRepository(db)
     role_feature_mapping = await uam_service.feature_role_mapping(role_id, feature_id)
     if len(role_feature_mapping) > 0:
@@ -747,7 +791,7 @@ async def assign_feature_to_role(payload: AssignFeatureToRole, auth_payload: dic
             },
             "response": {},
         }
-    
+
     role_id_list = await uam_service.get_role_feature_mapping(role_id)
     if len(role_id_list) == 0:
         return {
@@ -757,8 +801,8 @@ async def assign_feature_to_role(payload: AssignFeatureToRole, auth_payload: dic
             },
             "response": {},
         }
-    
-    role_id_list = await uam_service.get_feature_by_key({"feature_id":feature_id})
+
+    role_id_list = await uam_service.get_feature_by_key({"feature_id": feature_id})
     if len(role_id_list) == 0:
         return {
             "header": {
@@ -767,8 +811,8 @@ async def assign_feature_to_role(payload: AssignFeatureToRole, auth_payload: dic
             },
             "response": {},
         }
-    
-    if str(permission_level) not in ["1","2","3","4"]:
+
+    if str(permission_level) not in ["1", "2", "3", "4"]:
         return {
             "header": {
                 "code": 400,
@@ -782,9 +826,9 @@ async def assign_feature_to_role(payload: AssignFeatureToRole, auth_payload: dic
         "feature_id": feature_id,
         "permission_level": permission_level,
         "updated_by": token_data[0]["user_id"],
-        "action": "create"
+        "action": "create",
     }
-    
+
     code, role_feature_mapping = await uam_service.create_feature_role_mapping(payload)
     if code != 200:
         return {
@@ -794,10 +838,91 @@ async def assign_feature_to_role(payload: AssignFeatureToRole, auth_payload: dic
             },
             "response": {},
         }
+    
+    UserService.update_uam_log(token_data[0]["user_id"], "assignfeaturetorole", payload)
     return {
         "header": {
             "code": 200,
             "message": UserMessages.SUCCESS,
         },
-        "response": {}
+        "response": {},
     }
+
+
+@router.post("/editfeaturerole")
+async def edit_feature_role(
+    payload: EditFeatureRole,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Edit features to a role."""
+    if len(auth_payload) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+
+    service = UserRepository(db)
+    token_data = await service.get_token_data(payload.token)
+    if len(token_data) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+
+    role_id = payload.role_id
+    feature_id = payload.feature_id
+    permission_level = payload.permission_level
+
+    uam_service = UAMRepository(db)
+    role_feature_mapping = await uam_service.feature_role_mapping(role_id, feature_id)
+    if len(role_feature_mapping) != 1:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Invalid detail found.",
+            },
+            "response": {},
+        }
+
+    if str(permission_level) not in ["1", "2", "3", "4"]:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Invalid permission level.",
+            },
+            "response": {},
+        }
+
+    payload = {
+        "role_id": role_id,
+        "feature_id": feature_id,
+        "permission_level": permission_level,
+        "updated_by": token_data[0]["user_id"],
+        "action": "edit",
+    }
+
+    code, role_feature_mapping = await uam_service.create_feature_role_mapping(payload)
+    if code != 200:
+        return {
+            "header": {
+                "code": code,
+                "message": role_feature_mapping,
+            },
+            "response": {},
+        }
+    UserService.update_uam_log(token_data[0]["user_id"], "editfeaturerole", payload)
+    return {
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {},
+    }
+

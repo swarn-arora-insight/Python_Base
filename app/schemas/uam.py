@@ -90,3 +90,9 @@ class AssignFeatureToRole(BaseModel):
     role_id:str
     feature_id:str
     permission_level:int
+
+class EditFeatureRole(BaseModel):
+    token:str
+    role_id:str
+    feature_id:str
+    permission_level:int

@@ -225,6 +225,7 @@ async def create_user(
             "response": {},
         }
 
+    UserService.update_uam_log(token_data[0]["user_id"], "createuser", payload)
     return {
         "header": {
             "code": 200,
@@ -282,7 +283,7 @@ async def delete_user(
             },
             "response": {},
         }
-
+    UserService.update_uam_log(token_data[0]["user_id"], "deleteuser", payload)
     return {
         "header": {
             "code": 200,
