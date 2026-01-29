@@ -23,7 +23,8 @@ base_dir = os.getcwd()
 BUCKET = os.getenv("S3_BUCKET")
 PROJECT_NAME = os.getenv("S3_PROJECT_NAME")
 ATHENA_DB = os.getenv("ATHENA_DB")
-ATHENA_TABLE = os.getenv("ATHENA_TABLE")
+ATHENA_VAUTO_TABLE = os.getenv("ATHENA_VAUTO_TABLE")
+ATHENA_CARGURU_TABLE = os.getenv("ATHENA_CARGURU_TABLE")
 ATHENA_OUTPUT = os.getenv("ATHENA_OUTPUT")
 
 # Global Session Store: {session_id: driver}
@@ -240,7 +241,12 @@ class ScrapeService:
             logger.info(f"Local Parquet saved for validation: {local_parquet}")
             # --------------------------------------------------
 
-
+            if webpage == "vauto":
+                table_name = ATHENA_VAUTO_TABLE
+            elif webpage == "cargurus":
+                table_name = ATHENA_CARGURU_TABLE
+            else:
+                raise Exception(f"Unknown webpage: {webpage}")
 
             # Upload to S3
             s3_path = upload_df_to_s3_parquet(
@@ -248,7 +254,7 @@ class ScrapeService:
                 bucket=BUCKET,
                 project_name=PROJECT_NAME,
                 database=ATHENA_DB,
-                table_name=ATHENA_TABLE,
+                table_name=table_name,
                 athena_output=ATHENA_OUTPUT
             )
             logger.info(f"File successfully uploaded to S3: {s3_path}")

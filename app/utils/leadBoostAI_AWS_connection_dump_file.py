@@ -11,7 +11,8 @@ from core.logging import logger
 
 # Load .env BEFORE reading AWS credentials
 load_dotenv()
-
+ATHENA_VAUTO_TABLE = os.getenv("ATHENA_VAUTO_TABLE")
+ATHENA_CARGURU_TABLE = os.getenv("ATHENA_CARGURU_TABLE")
 aws_access_key = os.getenv("AWS_ACCESS_KEY")
 aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
 region_name = "us-east-2"
@@ -56,7 +57,7 @@ def athena_table_exists(database, table_name, athena_output):
     return len(results["ResultSet"]["Rows"]) > 1
 
 
-def create_athena_table_if_not_exists22(
+def create_athena_carguru_table_if_not_exists(
     database, table_name, bucket, project_name, athena_output
 ):
     query = f"""
@@ -103,7 +104,7 @@ def create_athena_table_if_not_exists22(
     print(f"🆕 Athena table ensured: {table_name}")
 
 
-def create_athena_table_if_not_exists(
+def create_athena_vauto_table_if_not_exists(
     database, table_name, bucket, project_name, athena_output
 ):
     query = f"""
@@ -239,6 +240,12 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
     # if not athena_table_exists(database, table_name, athena_output):
     #     create_athena_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
     
+    # if table_name == ATHENA_CARGURU_TABLE:
+    #     if not athena_table_exists(database, table_name, athena_output):
+    #         create_athena_carguru_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
+    # elif table_name == ATHENA_VAUTO_TABLE:
+    #     if not athena_table_exists(database, table_name, athena_output):
+    #         create_athena_vauto_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
     # # Update Athena partitions
     # try:
     #     repair_athena_table(database, table_name, athena_output)
