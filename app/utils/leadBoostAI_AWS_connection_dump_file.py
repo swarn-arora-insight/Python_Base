@@ -6,7 +6,11 @@ import boto3
 import pandas as pd
 from datetime import datetime
 from io import BytesIO
+from dotenv import load_dotenv
 from core.logging import logger 
+
+# Load .env BEFORE reading AWS credentials
+load_dotenv()
 
 aws_access_key = os.getenv("AWS_ACCESS_KEY")
 aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
