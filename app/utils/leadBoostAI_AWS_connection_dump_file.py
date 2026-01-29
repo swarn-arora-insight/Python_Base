@@ -52,6 +52,53 @@ def athena_table_exists(database, table_name, athena_output):
     return len(results["ResultSet"]["Rows"]) > 1
 
 
+def create_athena_table_if_not_exists22(
+    database, table_name, bucket, project_name, athena_output
+):
+    query = f"""
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table_name} (
+        make string,
+        model string,
+        year int,
+        trim string,
+        type string,
+        vin string,
+        stock# string,
+
+        price string,
+        deal_rating string,
+        new_price string,
+        new_deal_rating string,
+
+        cargurus_imv string,
+        price_change string,
+        price_change_to_next_best_deal_rating string,
+        price_at_next_deal_rating string,
+
+        days_at_dealership int,
+        days_on_cargurus int,
+        saves int,
+
+        recommended_price string,
+        mds string,
+        opportunity string,
+        turn_time string,
+        store string
+    )
+    PARTITIONED BY (
+        year string,
+        month string,
+        day string
+    )
+    STORED AS PARQUET
+    LOCATION 's3://{bucket}/{project_name}/'
+    """
+
+    execution_id = run_athena_query(query, database, athena_output)
+    wait_for_query(execution_id)
+    print(f"🆕 Athena table ensured: {table_name}")
+
+
 def create_athena_table_if_not_exists(
     database, table_name, bucket, project_name, athena_output
 ):
@@ -184,17 +231,17 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
 
     logger.info(f"Uploaded parquet to {s3_path}")
 
-    #  Ensure Athena table exists
-    if not athena_table_exists(database, table_name, athena_output):
-        create_athena_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
+    # #  Ensure Athena table exists
+    # if not athena_table_exists(database, table_name, athena_output):
+    #     create_athena_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
     
-    # Update Athena partitions
-    try:
-        repair_athena_table(database, table_name, athena_output)
-    except Exception as e:
-        logger.error(f"Athena repair failed (likely permission issue): {e}")
-        # We don't raise here because the S3 upload was successful
-        # and checking Athena permissions might be out of user's immediate control.
+    # # Update Athena partitions
+    # try:
+    #     repair_athena_table(database, table_name, athena_output)
+    # except Exception as e:
+    #     logger.error(f"Athena repair failed (likely permission issue): {e}")
+    #     # We don't raise here because the S3 upload was successful
+    #     # and checking Athena permissions might be out of user's immediate control.
     BUCKET = "taverna-auto-job"
     KEY = "leadBoostAI/year=2026/month=01/day=21/versionauction_inventory_records.parquet"
 
