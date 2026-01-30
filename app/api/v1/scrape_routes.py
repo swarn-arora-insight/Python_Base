@@ -14,13 +14,13 @@ def get_scrape_service():
 
 @router.post("/vauto/start")
 async def start_scrape(
-    request: StartScrapeRequest, 
+    # request: StartScrapeRequest, 
     service: ScrapeService = Depends(get_scrape_service),
     user_info: dict = Depends(UserService.authenticate_token)
 ):
-    username = request.username or os.getenv("VAUTO_USERNAME")
-    password = request.password or os.getenv("VAUTO_PASSWORD")
-    report_name = request.report_name or os.getenv("VAUTO_REPORT_NAME", "Taverna Inventory IRECON PHOTOS3")
+    username = os.getenv("VAUTO_USERNAME")
+    password = os.getenv("VAUTO_PASSWORD")
+    report_name = os.getenv("VAUTO_REPORT_NAME", "Taverna Inventory IRECON PHOTOS3")
 
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and Password required")
@@ -33,12 +33,12 @@ async def start_scrape(
 
 @router.post("/cargurus/start")
 async def start_cargurus_scrape(
-    request: StartScrapeRequest,
+    # request: StartScrapeRequest,
     service: ScrapeService = Depends(get_scrape_service),
     user_info: dict = Depends(UserService.authenticate_token)
 ):
-    username = request.username or os.getenv("CARGURUS_USERNAME")
-    password = request.password or os.getenv("CARGURUS_PASSWORD")
+    username = os.getenv("CARGURUS_USERNAME")
+    password = os.getenv("CARGURUS_PASSWORD")
     
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and Password required for CarGurus")
@@ -66,19 +66,18 @@ async def submit_otp(
 
 @router.post("/drivecentric/start")
 async def start_drivecentric_scrape(
-    request: StartScrapeRequest, 
+    # request: StartScrapeRequest, 
     service: ScrapeService = Depends(get_scrape_service),
     user_info: dict = Depends(UserService.authenticate_token)
 ):
-    username = request.username or os.getenv("DRIVECENTRIC_USERNAME")
-    password = request.password or os.getenv("DRIVECENTRIC_PASSWORD")
-    report_name = request.report_name or os.getenv("DRIVECENTRIC_REPORT_NAME", "Default Report")
+    username = os.getenv("DRIVECENTRIC_USERNAME")
+    password = os.getenv("DRIVECENTRIC_PASSWORD")
 
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and Password required for DriveCentric")
 
     try:
-        result = await service.start_drivecentric_login_flow(username, password, report_name)
+        result = await service.start_drivecentric_login_flow(username, password)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -89,9 +88,8 @@ async def submit_drivecentric_otp(
     service: ScrapeService = Depends(get_scrape_service),
     user_info: dict = Depends(UserService.authenticate_token)
 ):
-    report_name = os.getenv("DRIVECENTRIC_REPORT_NAME", "Default Report")
     try:
-        result = await service.submit_drivecentric_otp_flow(request.session_id, request.otp, report_name)
+        result = await service.submit_drivecentric_otp_flow(request.session_id, request.otp)
         return result
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))

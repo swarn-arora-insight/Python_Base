@@ -379,7 +379,7 @@ class ScrapeService:
                     "message": "2FA required. Please submit OTP."
                 }
             else:
-                self._perform_drivecentric_post_login_actions(driver, report_name)
+                self._perform_drivecentric_post_login_actions(driver)
                 self.close_driver_safely(session_id)
                 self.upload_latest_file_to_s3("drivecentric")
                 
@@ -389,7 +389,7 @@ class ScrapeService:
             self.close_driver_safely(session_id)
             raise e
 
-    async def submit_drivecentric_otp_flow(self, session_id: str, otp: str, report_name: str) -> Dict[str, str]:
+    async def submit_drivecentric_otp_flow(self, session_id: str, otp: str) -> Dict[str, str]:
         if session_id not in SESSIONS:
             raise ValueError("Session not found or expired")
         
@@ -417,7 +417,7 @@ class ScrapeService:
             except Exception:
                 logger.warning("Timed out waiting for sales pipeline URL. Proceeding to post-login actions anyway.")
 
-            self._perform_drivecentric_post_login_actions(driver, report_name)
+            self._perform_drivecentric_post_login_actions(driver)
             self.close_driver_safely(session_id)
             
             self.upload_latest_file_to_s3("drivecentric")
@@ -607,7 +607,7 @@ class ScrapeService:
 
                     # Capture files before export
                     before_files = set(glob.glob(os.path.join(download_path, "*")))
-                    logger.info(f"Files before export: {before_files}")
+                    # logger.info(f"Files before export: {before_files}")
                     # Click Export
                     logger.info("Clicking Export button...")
                     export_btn = self.get_element(driver, By.XPATH, "//button[contains(text(), 'Export')]")
@@ -621,7 +621,7 @@ class ScrapeService:
                         new_file = None
                         logger.info("Waiting for new file to appear...")
                         while time.time() < end_time:
-                            logger.info(f"Files in download folder: {glob.glob(os.path.join(download_path, "*"))}")
+                            # logger.info(f"Files in download folder: {glob.glob(os.path.join(download_path, "*"))}")
                             current_files = set(glob.glob(os.path.join(download_path, "*")))
                             new_files = current_files - before_files
                             if new_files:
@@ -761,7 +761,7 @@ class ScrapeService:
             logger.error(f"Error during DriveCentric login: {e}")
             raise e
 
-    def _perform_drivecentric_post_login_actions(self, driver, report_name):
+    def _perform_drivecentric_post_login_actions(self, driver):
         logger.info("Performing DriveCentric post-login actions...")
         
         downloaded_files_map = []
