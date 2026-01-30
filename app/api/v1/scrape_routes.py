@@ -63,3 +63,37 @@ async def submit_otp(
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/drivecentric/start")
+async def start_drivecentric_scrape(
+    request: StartScrapeRequest, 
+    service: ScrapeService = Depends(get_scrape_service),
+    user_info: dict = Depends(UserService.authenticate_token)
+):
+    username = request.username or os.getenv("DRIVECENTRIC_USERNAME")
+    password = request.password or os.getenv("DRIVECENTRIC_PASSWORD")
+    report_name = request.report_name or os.getenv("DRIVECENTRIC_REPORT_NAME", "Default Report")
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and Password required for DriveCentric")
+
+    try:
+        result = await service.start_drivecentric_login_flow(username, password, report_name)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/drivecentric/otp")
+async def submit_drivecentric_otp(
+    request: OtpRequest, 
+    service: ScrapeService = Depends(get_scrape_service),
+    user_info: dict = Depends(UserService.authenticate_token)
+):
+    report_name = os.getenv("DRIVECENTRIC_REPORT_NAME", "Default Report")
+    try:
+        result = await service.submit_drivecentric_otp_flow(request.session_id, request.otp, report_name)
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

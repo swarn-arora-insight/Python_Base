@@ -26,6 +26,7 @@ ATHENA_DB = os.getenv("ATHENA_DB")
 ATHENA_VAUTO_TABLE = os.getenv("ATHENA_VAUTO_TABLE")
 ATHENA_CARGURU_TABLE = os.getenv("ATHENA_CARGURU_TABLE")
 ATHENA_OUTPUT = os.getenv("ATHENA_OUTPUT")
+ATHENA_DRIVECENTRIC_TABLE = os.getenv("ATHENA_DRIVECENTRIC_TABLE")
 
 # Global Session Store: {session_id: driver}
 # In a production environment, this might need more robust handling (e.g., Redis + Grid)
@@ -45,6 +46,9 @@ class ScrapeService:
         elif webpage == "cargurus":
             profile_path = os.path.join(base_dir, "chrome_data_cargurus")
             download_path = os.path.join(base_dir, "downloads", "cargurus")
+        elif webpage == "drivecentric":
+            profile_path = os.path.join(base_dir, "chrome_data_drivecentric")
+            download_path = os.path.join(base_dir, "downloads", "drivecentric")
         else:
             profile_path = os.path.join(base_dir, "chrome_data_other")
             download_path = os.path.join(base_dir, "downloads", "other")
@@ -136,6 +140,8 @@ class ScrapeService:
                 download_path = os.path.join(base_dir, "downloads", "vauto")
             elif webpage == "cargurus":
                 download_path = os.path.join(base_dir, "downloads", "cargurus")
+            elif webpage == "drivecentric":
+                download_path = os.path.join(base_dir, "downloads", "drivecentric")
             else:
                 download_path = os.path.join(base_dir, "downloads", "other")
             # Get list of files in download path
@@ -245,6 +251,9 @@ class ScrapeService:
                 table_name = ATHENA_VAUTO_TABLE
             elif webpage == "cargurus":
                 table_name = ATHENA_CARGURU_TABLE
+            elif webpage == "drivecentric":
+                table_name = ATHENA_DRIVECENTRIC_TABLE
+
             else:
                 raise Exception(f"Unknown webpage: {webpage}")
 
@@ -349,6 +358,73 @@ class ScrapeService:
             return {"status": "success", "message": "CarGurus scrape completed successfully."}
         except Exception as e:
             logger.error(f"Error in start_cargurus_login_flow: {e}")
+            self.close_driver_safely(session_id)
+            raise e
+
+
+    async def start_drivecentric_login_flow(self, username: str, password: str, report_name: str) -> Dict[str, str]:
+        session_id = str(uuid.uuid4())
+        logger.info(f"Starting new DriveCentric session: {session_id}")
+        
+        driver = self.setup_driver("drivecentric")
+        SESSIONS[session_id] = driver
+        logger.info(f"DriveCentric session started: {SESSIONS}")
+
+        try:
+            status = self._perform_drivecentric_login_actions(driver, username, password)
+            if status == "OTP_NEEDED":
+                return {
+                    "status": "waiting_for_otp", 
+                    "session_id": session_id, 
+                    "message": "2FA required. Please submit OTP."
+                }
+            else:
+                self._perform_drivecentric_post_login_actions(driver, report_name)
+                self.close_driver_safely(session_id)
+                self.upload_latest_file_to_s3("drivecentric")
+                
+                return {"status": "success", "message": "DriveCentric scrape completed successfully."}
+        except Exception as e:
+            logger.error(f"Error in start_drivecentric_login_flow: {e}")
+            self.close_driver_safely(session_id)
+            raise e
+
+    async def submit_drivecentric_otp_flow(self, session_id: str, otp: str, report_name: str) -> Dict[str, str]:
+        if session_id not in SESSIONS:
+            raise ValueError("Session not found or expired")
+        
+        driver = SESSIONS[session_id]
+        
+        try:
+            logger.info("Waiting for OTP input field...")
+            # Updated selector based on user provided HTML: id="code"
+            otp_field = self.get_element(driver, By.ID, "code") 
+            otp_field.send_keys(otp)
+            
+            # Updated submit button based on user provided HTML
+            verify_btn = self.get_element(driver, By.CSS_SELECTOR, "button[type='submit']")
+            if verify_btn:
+                self.click_element(driver, verify_btn)
+                logger.info("OTP submitted")
+            else:
+                logger.warning("OTP button not found")
+            
+            # Wait for successful login URL
+            logger.info("Waiting for redirect to sales pipeline...")
+            try:
+                WebDriverWait(driver, 30).until(EC.url_contains("/pipeline/sales"))
+                logger.info("Redirected to sales pipeline successfully.")
+            except Exception:
+                logger.warning("Timed out waiting for sales pipeline URL. Proceeding to post-login actions anyway.")
+
+            self._perform_drivecentric_post_login_actions(driver, report_name)
+            self.close_driver_safely(session_id)
+            
+            self.upload_latest_file_to_s3("drivecentric")
+            return {"status": "success", "message": "DriveCentric scrape completed successfully."}
+        
+        except Exception as e:
+            logger.error(f"Error in submit_drivecentric_otp_flow: {e}")
             self.close_driver_safely(session_id)
             raise e
 
@@ -608,4 +684,286 @@ class ScrapeService:
             else:
                 logger.warning("No files downloaded to aggregate.")
         else:
-            logger.info("Failed to redirect to CarGurus domain.")    
+            logger.info("Failed to redirect to CarGurus domain.")
+
+    def _perform_drivecentric_login_actions(self, driver, username, password):
+        url = "https://app.drivecentric.com"
+        driver.get(url)
+        logger.info("Navigated to DriveCentric Login Page")
+        time.sleep(5)
+
+        try:
+            # Check if already logged in
+            if "login" not in driver.current_url.lower():
+                 logger.info("Url does not contain 'login', assuming already logged in or redirected.")
+            
+            # Additional check: If we are already on the sales pipeline, return LOGGED_IN
+            if "/pipeline/sales" in driver.current_url:
+                 logger.info("Already on sales pipeline.")
+                 return "LOGGED_IN"
+
+            username_field = self.get_element(driver, By.ID, "signInFormUsername")
+            username_field.clear()
+            username_field.send_keys(username)
+            logger.info("DriveCentric username entered")
+
+            password_field = self.get_element(driver, By.ID, "signInFormPassword")
+            password_field.clear()
+            password_field.send_keys(password)
+            logger.info("DriveCentric password entered")
+
+            # Uncommented and verified selector
+            submit_btn = self.get_element(driver, By.CSS_SELECTOR, "button[type='submit']")
+            if submit_btn:
+                self.click_element(driver, submit_btn)
+                logger.info("DriveCentric login submitted")
+            else:
+                logger.error("Login submit button not found")
+            
+            time.sleep(5)
+
+            # Check for OTP Page
+            # Unique element on OTP page: <drc-custom-confirm-sign-in> or input with id="code"
+            # Using input id="code" as a reliable indicator
+            try:
+                otp_input = self.get_element(driver, By.ID, "code", timeout=5)
+                if otp_input:
+                    logger.info("OTP field detected. 2FA required.")
+                    return "OTP_NEEDED"
+            except Exception:
+                pass
+            
+            # Check for success
+            if "/pipeline/sales" in driver.current_url:
+                 logger.info("Redirected to sales pipeline immediately.")
+                 return "LOGGED_IN"
+
+            # If we are here, we might be loading or on an intermediate page. 
+            # Let's wait a bit more or assume logged in if no OTP was found but no error.
+            # But safer to return OTP_NEEDED if ANY ambiguity, or wait for URL.
+            
+            logger.info("Checking final URL state...")
+            try:
+                 WebDriverWait(driver, 10).until(EC.url_contains("/pipeline/sales"))
+                 return "LOGGED_IN"
+            except Exception:
+                 logger.warning("Did not reach sales pipeline and did not find OTP field. Potential issue.")
+                 # Fallback: check again for OTP just in case it loaded late
+                 try:
+                    if self.get_element(driver, By.ID, "code", timeout=2):
+                        return "OTP_NEEDED"
+                 except: 
+                     pass
+                 
+                 return "LOGGED_IN" # Assuming logged in for now, otherwise script would fail later
+
+        except Exception as e:
+            logger.error(f"Error during DriveCentric login: {e}")
+            raise e
+
+    def _perform_drivecentric_post_login_actions(self, driver, report_name):
+        logger.info("Performing DriveCentric post-login actions...")
+        
+        downloaded_files_map = []
+        download_path = os.path.join(base_dir, "downloads", "drivecentric")
+        os.makedirs(download_path, exist_ok=True)
+
+        try:
+            # 1. Get available stores
+            stores = self._get_drivecentric_stores(driver)
+            logger.info(f"Found stores: {stores}")
+
+            for store in stores:
+                logger.info(f"Processing store: {store}")
+                
+                try:
+                    # 2. Switch to store
+                    self._switch_to_drivecentric_store(driver, store)
+                    time.sleep(5) # Wait for store switch to settle
+
+                    # 3. Navigate to Mining Deals
+                    logger.info("Navigating to Mining Deals...")
+                    driver.get("https://app.drivecentric.com/#/mining/deals/")
+                    time.sleep(5) # Wait for page load
+
+                    # 4. Apply Filters
+                    self._apply_drivecentric_filters(driver)
+
+                    # 5. Download
+                    before_files = set(glob.glob(os.path.join(download_path, "*")))
+                    self._drivecentric_download_report(driver)
+                    
+                    # Wait for download
+                    timeout = 60
+                    end_time = time.time() + timeout
+                    new_file = None
+                    while time.time() < end_time:
+                        current_files = set(glob.glob(os.path.join(download_path, "*")))
+                        new_files = current_files - before_files
+                        valid_new_files = [f for f in new_files if not f.endswith('.crdownload') and not f.endswith('.tmp')]
+                        if valid_new_files:
+                            new_file = valid_new_files[0]
+                            break
+                        time.sleep(1)
+                    
+                    if new_file:
+                        logger.info(f"Downloaded file for {store}: {new_file}")
+                        downloaded_files_map.append((store, new_file))
+                    else:
+                        logger.warning(f"Timeout downloading file for {store}")
+
+                except Exception as inner_e:
+                    logger.error(f"Error processing store {store}: {inner_e}")
+                    continue
+
+            # 6. Aggregate
+            if downloaded_files_map:
+                all_dfs = []
+                for store_name, file_path in downloaded_files_map:
+                    try:
+                        if file_path.endswith('.csv'):
+                            df = pd.read_csv(file_path)
+                        elif file_path.endswith(('.xls', '.xlsx')):
+                            df = pd.read_excel(file_path)
+                        else:
+                            continue
+                        df['store'] = store_name
+                        all_dfs.append(df)
+                    except Exception as e:
+                        logger.error(f"Error reading {file_path}: {e}")
+                
+                if all_dfs:
+                    final_df = pd.concat(all_dfs, ignore_index=True)
+                    timestamp = datetime.now().strftime("%m.%d.%Y__%H-%M-%S")
+                    combined_filename = f"DriveCentric_Aggregated__{timestamp}.xlsx"
+                    combined_path = os.path.join(download_path, combined_filename)
+                    final_df.to_excel(combined_path, index=False)
+                    logger.info(f"Aggregated file saved: {combined_path}")
+            else:
+                logger.warning("No files to aggregate.")
+
+        except Exception as e:
+            logger.error(f"Error in DriveCentric post-login actions: {e}")
+            raise e
+
+    def _get_drivecentric_stores(self, driver):
+        try:
+            logger.info("Opening profile menu to find stores...")
+            # Click Profile Menu (Avatar)
+            # Selector from user HTML: <drc-avatar ...> or generic avatar class
+            profile_menu = self.get_element(driver, By.CSS_SELECTOR, "drc-avatar, .ui-kit-avatar")
+            self.click_element(driver, profile_menu)
+            time.sleep(1)
+
+            # Click Change Stores
+            logger.info("Clicking Change Stores...")
+            # Look for "Change Stores" text
+            change_stores_btn = self.get_element(driver, By.XPATH, "//div[contains(text(), 'Change Stores')]")
+            self.click_element(driver, change_stores_btn)
+            time.sleep(2)
+
+            # Get Store Names
+            logger.info("Scraping store names...")
+            store_elements = driver.find_elements(By.CSS_SELECTOR, ".store-name-label")
+            stores = [el.text.strip() for el in store_elements if el.text.strip()]
+            
+            # Close the dialog
+            close_btn = self.get_element(driver, By.CSS_SELECTOR, ".card-close")
+            if close_btn:
+                self.click_element(driver, close_btn)
+            else:
+                # If no close button, maybe click outside or escape (optional, but card-close is in HTML)
+                pass
+            
+            time.sleep(1)
+            return stores
+
+        except Exception as e:
+            logger.error(f"Error getting stores: {e}")
+            raise e
+
+    def _switch_to_drivecentric_store(self, driver, store_name):
+        try:
+            logger.info(f"Switching to {store_name}...")
+            # 1. Open Profile
+            profile_menu = self.get_element(driver, By.CSS_SELECTOR, "drc-avatar, .ui-kit-avatar")
+            self.click_element(driver, profile_menu)
+            time.sleep(1)
+
+            # 2. Open Change Stores
+            change_stores_btn = self.get_element(driver, By.XPATH, "//div[contains(text(), 'Change Stores')]")
+            self.click_element(driver, change_stores_btn)
+            time.sleep(2)
+
+            # 3. Select Store
+            # Find the specific store element
+            store_el = self.get_element(driver, By.XPATH, f"//div[contains(@class, 'store-name-label') and contains(text(), '{store_name}')]")
+            self.click_element(driver, store_el)
+            logger.info(f"Clicked {store_name}")
+            
+            # Wait for reload (URL might change or page refreshes)
+            time.sleep(5)
+
+        except Exception as e:
+            logger.error(f"Error switching to store {store_name}: {e}")
+            raise e
+
+    def _apply_drivecentric_filters(self, driver):
+        try:
+            logger.info("Applying filters...")
+            
+            # 1. Click "Add Filter"
+            # Selector: <span ...>Add Filter</span> inside <drc-chip>
+            add_filter_btn = self.get_element(driver, By.XPATH, "//span[contains(text(), 'Add Filter')]")
+            self.click_element(driver, add_filter_btn)
+            time.sleep(1)
+
+            # 2. Select "Deal Date Created"
+            # Selector: text inside <drc-single-selection-list-item>
+            date_filter_opt = self.get_element(driver, By.XPATH, "//div[contains(text(), 'Deal Date Created')]")
+            self.click_element(driver, date_filter_opt)
+            time.sleep(1)
+
+            # 3. Select "Yesterday"
+            # Selector: text "Yesterday" (it's a label next to radio)
+            yesterday_opt = self.get_element(driver, By.XPATH, "//span[contains(text(), 'Yesterday')]")
+            self.click_element(driver, yesterday_opt)
+            time.sleep(1)
+
+            # 4. Click "Save"
+            # Selector: button with text "Save" inside drc-button-popup list
+            # The HTML shows a Save button in the footer of the popup. 
+            # We can look for the button that specifically says "Save".
+            save_btn = self.get_element(driver, By.XPATH, "//button//span[contains(text(), 'Save')]")
+            self.click_element(driver, save_btn)
+            logger.info("Filter 'Yesterday' applied.")
+            time.sleep(3) # Wait for results to filter
+
+        except Exception as e:
+            logger.error(f"Error applying filters: {e}")
+            raise e
+
+    def _drivecentric_download_report(self, driver):
+        try:
+            logger.info("Initiating download...")
+            # Click Ellipsis
+            # Select by icon name or button class. Trying both or parent button.
+            # <drc-icon name="fa-ellipsis-v"> inside button
+            ellipsis_btn = self.get_element(driver, By.CSS_SELECTOR, "drc-icon[name='fa-ellipsis-v']")
+            # We need to click the button containing this icon usually, or the icon itself might work if it bubbles
+            # Let's try finding the parent button
+            try:
+                ellipsis_btn = ellipsis_btn.find_element(By.XPATH, "./ancestor::button")
+            except:
+                pass # Try clicking icon directly if parent lookup fails
+            
+            self.click_element(driver, ellipsis_btn)
+            time.sleep(1)
+            
+            # Click Download inside the list
+            download_btn = self.get_element(driver, By.XPATH, "//button[contains(text(), 'Download')]")
+            self.click_element(driver, download_btn)
+            logger.info("Clicked Download.")
+        except Exception as e:
+            logger.error(f"Download failed: {e}")
+            raise e    
