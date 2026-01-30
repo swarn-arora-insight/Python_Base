@@ -5,7 +5,9 @@ import uuid
 import logging
 from typing import Dict, Optional
 from selenium import webdriver
+import pyotp
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -726,9 +728,45 @@ class ScrapeService:
             # Unique element on OTP page: <drc-custom-confirm-sign-in> or input with id="code"
             # Using input id="code" as a reliable indicator
             try:
+                # Wait for OTP input to appear
                 otp_input = self.get_element(driver, By.ID, "code", timeout=5)
+                
                 if otp_input:
                     logger.info("OTP field detected. 2FA required.")
+                    
+                    # Check for TOTP Secret
+                    totp_secret = os.getenv("DRIVECENTRIC_TOTP_SECRET")
+                    if totp_secret:
+                        try:
+                            logger.info("Auto-generating TOTP code...")
+                            totp = pyotp.TOTP(totp_secret)
+                            current_otp = totp.now()
+                            
+                            otp_input.send_keys(current_otp)
+                            logger.info("Auto-filled OTP code.")
+                            
+                            # Click Verify/Submit
+                            verify_btn = self.get_element(driver, By.CSS_SELECTOR, "button[type='submit']")
+                            if verify_btn:
+                                self.click_element(driver, verify_btn)
+                                logger.info("Submitted OTP automatically.")
+                                
+                                # Wait for redirect
+                                try:
+                                    WebDriverWait(driver, 15).until(EC.url_contains("/pipeline/sales"))
+                                    logger.info("Auto-2FA successful. Redirected to sales pipeline.")
+                                    return "LOGGED_IN"
+                                except Exception:
+                                    logger.warning("Auto-2FA submitted but did not redirect quickly. Checking URL again...")
+                            else:
+                                logger.warning("Verify button not found for auto-2FA.")
+                                
+                        except Exception as otp_e:
+                            logger.error(f"Error during auto-2FA: {otp_e}")
+                            # Fallback to manual if auto fails
+                    else:
+                        logger.info("No DRIVECENTRIC_TOTP_SECRET found. Manual OTP required.")
+
                     return "OTP_NEEDED"
             except Exception:
                 pass
