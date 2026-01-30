@@ -217,6 +217,19 @@ class UAMRepository:
             return 500, str(e)
 
     # Feature
+    async def feature_list(self):
+        """Retrieves all features ordered by their ID."""
+        result = await self.db.execute(
+            select(FeatureGroup.feature_grp_id, FeatureGroup.feature_grp_name).order_by(FeatureGroup.id.asc())
+        )
+        feature_grp_list = []
+        for row in result.all():
+            get_feature = await self.db.execute(
+                select(Feature.feature_id, Feature.feature_name).where(Feature.feature_grp_id == row.feature_grp_id)
+            )
+            feature_grp_list.append({"feature_grp_id": row.feature_grp_id, "feature_grp_name": row.feature_grp_name, "feature_list": [{"feature_id": f.feature_id, "feature_name": f.feature_name} for f in get_feature.all()]})
+        return feature_grp_list
+
     async def get_feature_group_by_key(self, payload: dict) -> Optional[FeatureGroup]:
         """Fetches a feature group based on the provided name or ID."""
         if "feature_grp_name" in payload:
@@ -246,6 +259,19 @@ class UAMRepository:
                 }
                 for row in result.all()
             ]
+
+    async def get_feature_assigned_to_role(self, feature_id: str) -> Optional[Feature]:
+        """Fetches a feature based on the provided feature ID."""
+        result = await self.db.execute(
+            select(RoleFeature.role_id)
+            .where(RoleFeature.feature_id == feature_id)
+        )
+        return [
+            {
+                "role_id": row.role_id,
+            }
+            for row in result.all()
+        ]
 
     async def get_all_feature_groups(self):
         """Retrieves all feature groups ordered by their ID."""
@@ -306,6 +332,17 @@ class UAMRepository:
                 feature_group.feature_grp_name = payload["feature_grp_name"]
                 feature_group.updated_by = payload["updated_by"]
 
+                await self.db.commit()
+                return 200, "Success"
+            elif payload["action"] == "delete":
+                feature = await self.db.scalar(
+                    select(Feature).where(
+                        Feature.feature_id == payload["feature_id"],
+                    )
+                )
+                if not feature:
+                    return 404, "Feature not found"
+                await self.db.delete(feature)
                 await self.db.commit()
                 return 200, "Success"
         except Exception as e:
@@ -476,6 +513,18 @@ class UAMRepository:
                     return 404, "Role feature not found"
                 role_feature.permission_level = payload["permission_level"]
                 role_feature.updated_by = payload["updated_by"]
+                await self.db.commit()
+                return 200, "Success"
+            elif payload["action"] == "delete":
+                role_feature = await self.db.scalar(
+                    select(RoleFeature).where(
+                        RoleFeature.role_id == payload["role_id"],
+                        RoleFeature.feature_id == payload["feature_id"],
+                    )
+                )
+                if not role_feature:
+                    return 404, "Role feature not found"
+                await self.db.delete(role_feature)
                 await self.db.commit()
                 return 200, "Success"
         except Exception as e:

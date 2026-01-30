@@ -17,7 +17,7 @@ def get_uam_service(db: AsyncSession = Depends(get_db)) -> UAMService:
     return UAMService(UAMRepository(db))
 
 @router.post("/tabslist")
-async def tabslist(
+async def user_permission_tabs(
     payload: TabsList,
     auth_payload: dict = Depends(UserService.require_authorization),
     db: AsyncSession = Depends(get_db),
@@ -64,7 +64,7 @@ async def tabslist(
 
 
 @router.post("/getorgs")
-async def org_details(
+async def list_of_organizations(
     payload: OrgDetails,
     auth_payload: dict = Depends(UserService.require_authorization),
     db: AsyncSession = Depends(get_db),
@@ -103,7 +103,7 @@ async def org_details(
 
 
 @router.post("/createorg")
-async def create_org(
+async def create_organizations(
     payload: CreateOrg,
     auth_payload: dict = Depends(UserService.require_authorization),
     db: AsyncSession = Depends(get_db),
@@ -188,7 +188,7 @@ async def create_org(
 
 
 @router.post("/editorg")
-async def edit_org(
+async def edit_organizations(
     payload: EditOrg,
     auth_payload: dict = Depends(UserService.require_authorization),
     db: AsyncSession = Depends(get_db),
@@ -255,7 +255,7 @@ async def edit_org(
 
 
 @router.post("/deleteorg")
-async def delete_org(
+async def delete_organizations(
     payload: DeleteOrg,
     auth_payload: dict = Depends(UserService.require_authorization),
     db: AsyncSession = Depends(get_db),
@@ -518,8 +518,57 @@ async def edit_role(
     }
 
 
+
+@router.post("/getfeatures")
+async def get_list_of_features_in_feature_group(
+    payload: GetFeatures,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return all features."""
+    if len(auth_payload) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+
+    service = UserRepository(db)
+    token_data = await service.get_token_data(payload.token)
+    if len(token_data) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+
+    uam_repo = UAMRepository(db)
+    features = await uam_repo.feature_list()
+    if len(features) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": "No features found.",
+            },
+            "response": {},
+        }
+
+    
+    return {
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": features,
+    }
+
+
 @router.post("/createfeaturegrp")
-async def create_feature_grp(
+async def create_feature_group(
     payload: CreateFeatureGroup,
     auth_payload: dict = Depends(UserService.require_authorization),
     db: AsyncSession = Depends(get_db),
@@ -709,6 +758,70 @@ async def create_feature(
     }
 
 
+@router.post("/deletefeature")
+async def delete_feature(
+    payload: DeleteFeature,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a feature."""
+    if len(auth_payload) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+
+    service = UserRepository(db)
+    token_data = await service.get_token_data(payload.token)
+    if len(token_data) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+
+    uam_repo = UAMRepository(db)
+    feature_id = payload.feature_id.strip()
+
+    feature_assigned_to_role = await uam_repo.get_feature_assigned_to_role(feature_id)
+    if len(feature_assigned_to_role) > 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Feature can't be deleted as it is assigned to role.",
+            },
+            "response": {},
+        }
+
+    payload = {
+        "feature_id": feature_id,
+        "action": "delete",
+    }
+    code, feature_delete_message = await uam_repo.feature_group_entry(payload)
+    if code != 200:
+        return {
+            "header": {
+                "code": code,
+                "message": feature_delete_message,
+            },
+            "response": {},
+        }
+
+    UserService.update_uam_log(token_data[0]["user_id"], "deletefeature", payload)
+    return {
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {},
+    }
+
+
 @router.post("/featurerolelist")
 async def feature_role_list(
     payload: FeatureRoleList,
@@ -750,7 +863,7 @@ async def feature_role_list(
     }
 
 
-@router.post("/assignfeaturetorole")
+@router.post("/featureassign")
 async def assign_feature_to_role(
     payload: AssignFeatureToRole,
     auth_payload: dict = Depends(UserService.require_authorization),
@@ -849,8 +962,8 @@ async def assign_feature_to_role(
     }
 
 
-@router.post("/editfeaturerole")
-async def edit_feature_role(
+@router.post("/editrolefeature")
+async def edit_access_level_of_feature_which_is_assigned_to_role(
     payload: EditFeatureRole,
     auth_payload: dict = Depends(UserService.require_authorization),
     db: AsyncSession = Depends(get_db),
@@ -918,6 +1031,74 @@ async def edit_feature_role(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "editfeaturerole", payload)
+    return {
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {},
+    }
+
+
+@router.post("/deletefeaturerole")
+async def delete_feature_from_role(
+    payload: DeleteFeatureRole,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete features of a role."""
+    if len(auth_payload) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+
+    service = UserRepository(db)
+    token_data = await service.get_token_data(payload.token)
+    if len(token_data) == 0:
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+
+    role_id = payload.role_id
+    feature_id = payload.feature_id
+
+    uam_service = UAMRepository(db)
+    role_feature_mapping = await uam_service.feature_role_mapping(role_id, feature_id)
+    if len(role_feature_mapping) != 1:
+        return {
+            "header": {
+                "code": 400,
+                "message": "Invalid detail found.",
+            },
+            "response": {},
+        }
+
+    payload = {
+        "role_id": role_id,
+        "feature_id": feature_id,
+        "updated_by": token_data[0]["user_id"],
+        "action": "delete",
+    }
+
+    code, role_feature_mapping = await uam_service.create_feature_role_mapping(payload)
+    if code != 200:
+        return {
+            "header": {
+                "code": code,
+                "message": role_feature_mapping,
+            },
+            "response": {},
+        }
+
+    UserService.update_uam_log(token_data[0]["user_id"], "deletefeaturerole", payload)
     return {
         "header": {
             "code": 200,

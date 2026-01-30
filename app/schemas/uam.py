@@ -72,6 +72,9 @@ class EditRole(BaseModel):
     role_name:str
     role_id:str
 
+class GetFeatures(BaseModel):
+    token:str
+
 class CreateFeatureGroup(BaseModel):
     token:str
     feature_grp_name:str
@@ -80,6 +83,10 @@ class CreateFeature(BaseModel):
     token:str
     feature_name:str
     feature_grp_id:str
+
+class DeleteFeature(BaseModel):
+    token:str
+    feature_id:str
 
 class FeatureRoleList(BaseModel):
     token:str
@@ -96,3 +103,8 @@ class EditFeatureRole(BaseModel):
     role_id:str
     feature_id:str
     permission_level:int
+
+class DeleteFeatureRole(BaseModel):
+    token:str
+    role_id:str
+    feature_id:str
