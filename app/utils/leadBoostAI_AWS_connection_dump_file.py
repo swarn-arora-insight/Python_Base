@@ -8,6 +8,7 @@ from datetime import datetime
 from io import BytesIO
 from dotenv import load_dotenv
 from core.logging import logger 
+import time
 
 # Load .env BEFORE reading AWS credentials
 load_dotenv()
@@ -27,34 +28,44 @@ s3 = session.client("s3")
 athena = session.client("athena")
 
 def run_athena_query(query, database, athena_output):
+    logger.info(f"Running Athena query: {query}")
     response = athena.start_query_execution(
         QueryString=query,
         QueryExecutionContext={"Database": database},
         ResultConfiguration={"OutputLocation": athena_output},
     )
+    logger.info(f"Query execution started-- {response}")
+    logger.info(f"Query execution started: {response['QueryExecutionId']}")
     return response["QueryExecutionId"]
 
 
 def wait_for_query(execution_id):
     while True:
+        logger.info(f"Waiting for query execution: {execution_id}")
         status = athena.get_query_execution(QueryExecutionId=execution_id)
         state = status["QueryExecution"]["Status"]["State"]
+        logger.info(f"Query execution state: {state}")
 
         if state in ["SUCCEEDED", "FAILED", "CANCELLED"]:
             return state
         time.sleep(1)
+        logger.info("Waiting for query execution to complete...")
+    
 
 
 def athena_table_exists(database, table_name, athena_output):
     query = f"SHOW TABLES IN {database} LIKE '{table_name}';"
     execution_id = run_athena_query(query, database, athena_output)
     state = wait_for_query(execution_id)
+    logger.info(f"Athena table check state: {state}")
 
     if state != "SUCCEEDED":
+        logger.error(f"Athena table check failed: {state}")
         return False
 
     results = athena.get_query_results(QueryExecutionId=execution_id)
-    return len(results["ResultSet"]["Rows"]) > 1
+    logger.info(f"Athena table check results: {results}")
+    return len(results["ResultSet"]["Rows"]) > 0
 
 
 def create_athena_carguru_table_if_not_exists(
@@ -68,7 +79,7 @@ def create_athena_carguru_table_if_not_exists(
         trim string,
         type string,
         vin string,
-        stock# string,
+        stock_id string,
 
         price string,
         deal_rating string,
@@ -107,71 +118,138 @@ def create_athena_carguru_table_if_not_exists(
 def create_athena_vauto_table_if_not_exists(
     database, table_name, bucket, project_name, athena_output
 ):
+    # query = f"""
+    # CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table_name} (
+    # red_black string,
+
+    # carfax_has_report string,
+    # carfax_has_manufacturer_recall string,
+    # carfax_has_warnings string,
+    # carfax_has_problems string,
+
+    # certified string,
+    # tags string,
+
+    # vehicle string,
+    # body string,
+    # stock_id string,
+    # vin string,
+
+    # odometer bigint,
+    # color string,
+    # age int,
+
+    # price string,
+    # mkt_avg_price string,
+
+    # adjusted_pct_of_market string,
+    # adj_cost_to_market string,
+
+    # appraised_value string,
+    # appraiser string,
+    # book string,
+    # cost string,
+    # water string,
+    # markup string,
+    # last_change string,
+
+    # overall int,
+    # like_mine int,
+
+    # price_rank_description string,
+    # vrank_description string,
+
+    # autotrader_list_price string,
+    # autotrader_odometer bigint,
+    # autotrader_image_count int,
+    # autotrader_srp int,
+    # autotrader_vdp int,
+    # autotrader_pct_vdp string,
+
+    # cars_list_price string,
+    # cars_odometer bigint,
+    # cars_image_count int,
+    # cars_srp int,
+    # cars_vdp int,
+    # cars_pct_vdp string,
+
+    # provisioning_grade string
+    # )
+    # PARTITIONED BY (
+    #     year string,
+    #     month string,
+    #     day string
+    # )
+    # STORED AS PARQUET
+    # LOCATION 's3://{bucket}/{project_name}/'  
+    
+    # """
     query = f"""
     CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table_name} (
-    red_black string,
-
-    carfax_has_report string,
-    carfax_has_manufacturer_recall string,
-    carfax_has_warnings string,
-    carfax_has_problems string,
-
-    certified string,
-    tags string,
-
-    vehicle string,
-    body string,
-    stock_number string,
-    vin string,
-
-    odometer bigint,
-    color string,
-    age int,
-
-    price string,
-    mkt_avg_price string,
-
-    adjusted_pct_of_market string,
-    adj_cost_to_market string,
-
-    appraised_value string,
-    appraiser string,
-    book string,
-    cost string,
-    water string,
-    markup string,
-    last_change string,
-
-    overall int,
-    like_mine int,
-
-    price_rank_description string,
-    vrank_description string,
-
-    autotrader_list_price string,
-    autotrader_odometer bigint,
-    autotrader_image_count int,
-    autotrader_srp int,
-    autotrader_vdp int,
-    autotrader_pct_vdp string,
-
-    cars_list_price string,
-    cars_odometer bigint,
-    cars_image_count int,
-    cars_srp int,
-    cars_vdp int,
-    cars_pct_vdp string,
-
-    provisioning_grade string
+        photo_thumbnail double,
+        red_black string,
+        certified string,
+        autowriter_description string,
+        tags string,
+        recall_status_icon_small string,
+        disp string,
+        vehicle string,
+        body string,
+        stock_id string,
+        vin string,
+        odometer double,
+        color string,
+        interior_color string,
+        req_fields_missing double,
+        age bigint,
+        price double,
+        mkt_avg_price double,
+        adjusted_pct_of_market double,
+        adj_cost_to_market string,
+        appraised_value double,
+        appraiser string,
+        book double,
+        cost double,
+        water double,
+        markup double,
+        kbb_fair_market_range_high string,
+        last_change timestamp,
+        overall double,
+        like_mine double,
+        price_rank_description string,
+        vrank_description string,
+        autotrader_list_price double,
+        autotrader_odometer double,
+        autotrader_image_count double,
+        autotrader_srp double,
+        autotrader_vdp double,
+        autotrader_pct_vdp double,
+        cars_list_price double,
+        cars_odometer double,
+        cars_image_count double,
+        cars_srp double,
+        cars_vdp double,
+        cars_pct_vdp double,
+        cargurus_list_price double,
+        cargurus_odometer double,
+        cargurus_image_count double,
+        cargurus_srp double,
+        cargurus_vdp double,
+        cargurus_pct_vdp double,
+        jd_power_trade_in_clean string,
+        jd_power_trade_in_diff_clean string,
+        vehicle_year bigint,
+        make string,
+        model string
     )
     PARTITIONED BY (
         year string,
         month string,
-        day string
+        day string,
+        platform_name string
     )
     STORED AS PARQUET
-    LOCATION 's3://{bucket}/{project_name}/'  
-    
+    LOCATION 's3://{bucket}/{project_name}/'
     """
 
     execution_id = run_athena_query(query, database, athena_output)
@@ -198,7 +276,15 @@ def repair_athena_table(database, table_name, athena_output):
     logger.info("Athena partition repair started")
     return response["QueryExecutionId"]
 
-def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,database: str,table_name: str,athena_output: str):
+def drop_athena_table(database, table_name, athena_output):
+    query = f"DROP TABLE IF EXISTS {database}.{table_name}"
+
+    execution_id = run_athena_query(query, database, athena_output)
+    wait_for_query(execution_id)
+
+    logger.info(f"Athena table dropped: {database}.{table_name}")
+
+def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,database: str,table_name: str,athena_output: str,webpage: str):
     """
     Upload dataframe to S3 in partitioned parquet format
     and update Athena partitions
@@ -213,10 +299,20 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
     logger.info(f"Month: {month}")
     logger.info(f"Day: {day}")    
     filename = "versionauction_inventory_records"
-
+    platform = "versionauction"
+    if webpage == "vauto":
+        platform = "vauto"
+        filename = "versionauction_vauto_inventory_records"
+    elif webpage == "cargurus":
+        platform = "carguru"
+        filename = "versionauction_carguru_inventory_records"
+    elif webpage == "drivecentric":
+        platform = "drive_centric"
+        filename = "versionauction_drive_centric_inventory_records"
+    
     s3_key = (
         f"{project_name}/"
-        f"year={year}/month={month}/day={day}/"
+        f"year={year}/month={month}/day={day}/platform_name={platform}/"
         f"{filename}.parquet"
     )
     logger.info(f"S3 Key: {s3_key}")
@@ -227,6 +323,8 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
     df.to_parquet(buffer, engine="pyarrow", index=False)
     buffer.seek(0)
 
+
+
     # Upload to S3
     s3.put_object(
         Bucket=bucket,
@@ -235,26 +333,45 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
     )
 
     logger.info(f"Uploaded parquet to {s3_path}")
+    # Ensure Athena database exists
+    db_query = f"CREATE DATABASE IF NOT EXISTS {database}"
+    db_execution_id = run_athena_query(db_query, "default", athena_output)
+    wait_for_query(db_execution_id)
+    logger.info(f"Athena database ensured: {database}")
+    
+    # # Drop Athena database
+    # b_query = f"DROP DATABASE IF EXISTS {database}"
+    # db_execution_id = run_athena_query(b_query, "default", athena_output)
+    # wait_for_query(db_execution_id)
+    # logger.info(f"Athena database dropped: {database}")
 
     # #  Ensure Athena table exists
     # if not athena_table_exists(database, table_name, athena_output):
     #     create_athena_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
     
-    # if table_name == ATHENA_CARGURU_TABLE:
-    #     if not athena_table_exists(database, table_name, athena_output):
-    #         create_athena_carguru_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
-    # elif table_name == ATHENA_VAUTO_TABLE:
-    #     if not athena_table_exists(database, table_name, athena_output):
-    #         create_athena_vauto_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
-    # # Update Athena partitions
-    # try:
-    #     repair_athena_table(database, table_name, athena_output)
-    # except Exception as e:
-    #     logger.error(f"Athena repair failed (likely permission issue): {e}")
-    #     # We don't raise here because the S3 upload was successful
-    #     # and checking Athena permissions might be out of user's immediate control.
+    if table_name == ATHENA_CARGURU_TABLE:
+        if not athena_table_exists(database, table_name, athena_output):
+            logger.info(f"Creating Athena table: {table_name}")
+            create_athena_carguru_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
+    elif table_name == ATHENA_VAUTO_TABLE:
+        # if athena_table_exists(database, table_name, athena_output):
+        #     logger.info(f"Dropping Athena table: {table_name}")
+        #     drop_athena_table(database, table_name, athena_output)
+
+        if not athena_table_exists(database, table_name, athena_output):
+            logger.info(f"Creating Athena table: {table_name}")
+            create_athena_vauto_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
+    # Update Athena partitions
+    try:
+        logger.info(f"Repairing Athena partitions for table: {table_name}")
+        repair_athena_table(database, table_name, athena_output)
+    except Exception as e:
+        logger.error(f"Athena repair failed (likely permission issue): {e}")
+        # We don't raise here because the S3 upload was successful
+        # and checking Athena permissions might be out of user's immediate control.
     BUCKET = "taverna-auto-job"
-    KEY = "leadBoostAI/year=2026/month=01/day=21/versionauction_inventory_records.parquet"
+    KEY = f"leadBoostAI/year={year}/month={month}/day={day}/platform_name={platform}/{filename}.parquet"
+
 
     try:
         s3.head_object(Bucket=BUCKET, Key=KEY)

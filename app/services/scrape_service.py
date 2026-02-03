@@ -37,6 +37,48 @@ ATHENA_DRIVECENTRIC_TABLE = os.getenv("ATHENA_DRIVECENTRIC_TABLE")
 # In a production environment, this might need more robust handling (e.g., Redis + Grid)
 # but for this standalone service, a global dict works.
 SESSIONS: Dict[str, webdriver.Chrome] = {}
+NECESSARY_RENAME_MAP = {
+    "Photo Thumbnail": "photo_thumbnail",
+    "Red/Black": "red_black",
+    "Autowriter Description": "autowriter_description",
+    "Recall Status Icon Small": "recall_status_icon_small",
+    "Stock #": "stock_id",
+    "Interior Color": "interior_color",
+    "Req. Fields Missing": "req_fields_missing",
+    "Adjusted % of Market": "adjusted_pct_of_market",
+    "Adj Cost To Market": "adj_cost_to_market",
+    "KBB.com Fair Market Range High": "kbb_fair_market_range_high",
+    "Last $ Change": "last_change",
+
+    # AutoTrader
+    "AutoTrader.com List Price": "autotrader_list_price",
+    "AutoTrader.com Odometer": "autotrader_odometer",
+    "AutoTrader.com Image Count": "autotrader_image_count",
+    "AutoTrader.com SRP": "autotrader_srp",
+    "AutoTrader.com VDP": "autotrader_vdp",
+    "AutoTrader.com % VDP": "autotrader_pct_vdp",
+
+    # Cars.com
+    "Cars.com List Price": "cars_list_price",
+    "Cars.com Odometer": "cars_odometer",
+    "Cars.com Image Count": "cars_image_count",
+    "Cars.com SRP": "cars_srp",
+    "Cars.com VDP": "cars_vdp",
+    "Cars.com % VDP": "cars_pct_vdp",
+
+    # CarGurus
+    "CarGurus List Price": "cargurus_list_price",
+    "CarGurus Odometer": "cargurus_odometer",
+    "CarGurus Image Count": "cargurus_image_count",
+    "CarGurus SRP": "cargurus_srp",
+    "CarGurus VDP": "cargurus_vdp",
+    "CarGurus % VDP": "cargurus_pct_vdp",
+
+    # J.D. Power
+    "J.D. Power Trade In Clean": "jd_power_trade_in_clean",
+    "J.D. Power Trade In Diff Clean": "jd_power_trade_in_diff_clean",
+}
+
 
 class ScrapeService:
     @staticmethod
@@ -274,6 +316,22 @@ class ScrapeService:
             df["year"] = year
             df["month"] = month
             df["day"] = day
+            
+            if "stock#" in df.columns.str.lower() or "stock #" in df.columns.str.lower():
+                df.rename(columns={"stock#": "stock_id"}, inplace=True)
+                logger.info("Renamed 'stock#' column to 'stock_id'")
+            
+            df.columns = (
+                df.columns
+                .astype(str)
+                .str.replace("\n", " ")
+                .str.replace("\r", " ")
+                .str.replace(r"\s+", " ", regex=True)
+                .str.strip()
+            )
+
+
+            df = df.rename(columns=NECESSARY_RENAME_MAP)
 
             #test
             validated_path = os.path.join(base_dir, "validated", webpage)
@@ -315,14 +373,16 @@ class ScrapeService:
                 project_name=PROJECT_NAME,
                 database=ATHENA_DB,
                 table_name=table_name,
-                athena_output=ATHENA_OUTPUT
+                athena_output=ATHENA_OUTPUT,
+                webpage=webpage
             )
+            # s3_path = ""
             logger.info(f"File successfully uploaded to S3: {s3_path}")
             return s3_path
 
         except Exception as e:
             logger.error(f"Error uploading to S3: {e}")
-            self.send_error_email("upload_latest_file_to_s3", e)
+            # self.send_error_email("upload_latest_file_to_s3", e)
             raise e
 
     async def start_login_flow(self, username: str, password: str, report_name: str) -> Dict[str, str]:
@@ -392,7 +452,7 @@ class ScrapeService:
         
         except Exception as e:
             logger.error(f"Error in submit_otp_flow: {e}")
-            self.send_error_email("submit_otp_flow (vAuto)", e)
+            # self.send_error_email("submit_otp_flow (vAuto)", e)
             self.close_driver_safely(session_id)
             raise e
 
@@ -412,7 +472,7 @@ class ScrapeService:
             return {"status": "success", "message": "CarGurus scrape completed successfully."}
         except Exception as e:
             logger.error(f"Error in start_cargurus_login_flow: {e}")
-            self.send_error_email("start_cargurus_login_flow", e)
+            # self.send_error_email("start_cargurus_login_flow", e)
             self.close_driver_safely(session_id)
             raise e
 
@@ -496,7 +556,7 @@ class ScrapeService:
         username_field.send_keys(username)
         self.click_element(driver, self.get_element(driver, By.ID, "signIn"))
         logger.info("Username entered")
-
+        time.sleep(4)
         password_field = self.get_element(driver, By.ID, "password")
         time.sleep(1) 
         password_field.send_keys(password)
