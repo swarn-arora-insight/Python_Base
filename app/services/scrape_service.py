@@ -6,6 +6,9 @@ import logging
 from typing import Dict, Optional
 from selenium import webdriver
 import pyotp
+import resend
+import sys
+import traceback
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
@@ -133,6 +136,52 @@ class ScrapeService:
                 driver.quit()
             except Exception as e:
                 logger.error(f"Error closing driver: {e}")
+
+    @staticmethod
+    def send_error_email(context: str, exception: Exception):
+        try:
+            resend.api_key = os.getenv("RESEND_API_KEY")
+            
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            tb_list = traceback.extract_tb(exc_traceback)
+            
+            filename = "Unknown"
+            line_no = "Unknown"
+            func_name = "Unknown"
+            
+            if tb_list:
+                # Get the last frame for the most specific location
+                last_frame = tb_list[-1]
+                filename = last_frame.filename
+                line_no = last_frame.lineno
+                func_name = last_frame.name
+            
+            subject = f"Scraping Error - {context}"
+            html_content = f"""
+            <h3>Error Notification</h3>
+            <p><strong>Message:</strong> {str(exception)}</p>
+            <p><strong>Context:</strong> {context}</p>
+            <p><strong>File:</strong> {filename}</p>
+            <p><strong>Function:</strong> {func_name}</p>
+            <p><strong>Line Number:</strong> {line_no}</p>
+            <hr>
+            <h3>Traceback</h3>
+            <pre>{traceback.format_exc()}</pre>
+            """
+            
+            params = {
+                "from": "CRM-Taverna.ai <info@tavernaai.com>",
+                "to": ["alok.yadav@knowledgeexcel.com"],
+                "subject": subject,
+                "html": html_content,
+                "reply_to": "alok.yadav@knowledgeexcel.com"
+            }
+            
+            r = resend.Emails.send(params)
+            logger.info(f"Error email sent: {r}")
+            
+        except Exception as email_error:
+            logger.error(f"Failed to send error email: {email_error}")
 
     # --- Flows ---
 
@@ -273,6 +322,7 @@ class ScrapeService:
 
         except Exception as e:
             logger.error(f"Error uploading to S3: {e}")
+            self.send_error_email("upload_latest_file_to_s3", e)
             raise e
 
     async def start_login_flow(self, username: str, password: str, report_name: str) -> Dict[str, str]:
@@ -298,6 +348,7 @@ class ScrapeService:
                 return {"status": "success", "message": "Scrape completed successfully (No 2FA needed)."}
         except Exception as e:
             logger.error(f"Error in start_login_flow: {e}")
+            # self.send_error_email("start_login_flow (vAuto)", e)
             self.close_driver_safely(session_id)
             raise e
 
@@ -341,6 +392,7 @@ class ScrapeService:
         
         except Exception as e:
             logger.error(f"Error in submit_otp_flow: {e}")
+            self.send_error_email("submit_otp_flow (vAuto)", e)
             self.close_driver_safely(session_id)
             raise e
 
@@ -360,6 +412,7 @@ class ScrapeService:
             return {"status": "success", "message": "CarGurus scrape completed successfully."}
         except Exception as e:
             logger.error(f"Error in start_cargurus_login_flow: {e}")
+            self.send_error_email("start_cargurus_login_flow", e)
             self.close_driver_safely(session_id)
             raise e
 
@@ -388,6 +441,7 @@ class ScrapeService:
                 return {"status": "success", "message": "DriveCentric scrape completed successfully."}
         except Exception as e:
             logger.error(f"Error in start_drivecentric_login_flow: {e}")
+            self.send_error_email("start_drivecentric_login_flow", e)
             self.close_driver_safely(session_id)
             raise e
 
@@ -427,6 +481,7 @@ class ScrapeService:
         
         except Exception as e:
             logger.error(f"Error in submit_drivecentric_otp_flow: {e}")
+            self.send_error_email("submit_drivecentric_otp_flow", e)
             self.close_driver_safely(session_id)
             raise e
 
@@ -852,6 +907,7 @@ class ScrapeService:
 
                 except Exception as inner_e:
                     logger.error(f"Error processing store {store}: {inner_e}")
+                    self.send_error_email(f"DriveCentric Store Loop: {store}", inner_e)
                     continue
 
             # 6. Aggregate
@@ -882,6 +938,7 @@ class ScrapeService:
 
         except Exception as e:
             logger.error(f"Error in DriveCentric post-login actions: {e}")
+            self.send_error_email("DriveCentric post-login actions", e)
             raise e
 
     def _get_drivecentric_stores(self, driver):
