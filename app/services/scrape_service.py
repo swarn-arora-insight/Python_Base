@@ -16,6 +16,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from core.logging import logger
 import pandas as pd
+import numpy as np
 import glob
 from utils.leadBoostAI_AWS_connection_dump_file import upload_df_to_s3_parquet
 from datetime import datetime
@@ -37,7 +38,9 @@ ATHENA_DRIVECENTRIC_TABLE = os.getenv("ATHENA_DRIVECENTRIC_TABLE")
 # In a production environment, this might need more robust handling (e.g., Redis + Grid)
 # but for this standalone service, a global dict works.
 SESSIONS: Dict[str, webdriver.Chrome] = {}
-NECESSARY_RENAME_MAP = {
+NECESSARY_RENAME_MAP_DRIVECENTRIC={}
+NECESSARY_RENAME_MAP={}
+NECESSARY_RENAME_MAP_VAUTO = {
     "Photo Thumbnail": "photo_thumbnail",
     "Red/Black": "red_black",
     "Autowriter Description": "autowriter_description",
@@ -77,6 +80,22 @@ NECESSARY_RENAME_MAP = {
     # J.D. Power
     "J.D. Power Trade In Clean": "jd_power_trade_in_clean",
     "J.D. Power Trade In Diff Clean": "jd_power_trade_in_diff_clean",
+}
+
+NECESSARY_RENAME_MAP_CARGURUS = {
+    "Year": "vehicle_year",  # vehicle year (avoid conflict with partition year)
+    "Stock#": "stock_id",
+    "Deal Rating": "deal_rating",
+    "New Price": "new_price",
+    "New Deal Rating": "new_deal_rating",
+    "CarGurus IMV": "cargurus_imv",
+    "Price Change": "price_change",
+    "Price Change to Next Best Deal Rating": "price_change_to_next_best_deal_rating",
+    "Price at Next Deal Rating": "price_at_next_deal_rating",
+    "Days at Dealership": "days_at_dealership",
+    "Days on CarGurus": "days_on_cargurus",
+    "Recommended price": "recommended_price",
+    "Turn time": "turn_time",
 }
 
 
@@ -329,9 +348,40 @@ class ScrapeService:
                 .str.replace(r"\s+", " ", regex=True)
                 .str.strip()
             )
+            if webpage == "cargurus":
+                df = df.rename(columns=NECESSARY_RENAME_MAP_CARGURUS)
+                df.columns = df.columns.str.lower()
 
+                MONEY_COLUMNS = [
+                    "price",
+                    "new_price",
+                    "cargurus_imv",
+                    "price_change",
+                    "price_change_to_next_best_deal_rating",
+                    "price_at_next_deal_rating",
+                    "recommended_price",
+                ]
 
-            df = df.rename(columns=NECESSARY_RENAME_MAP)
+                for col in MONEY_COLUMNS:
+                    if col in df.columns:
+                        df[col] = (
+                            df[col]
+                            .astype(str)
+                            .str.replace(r"[\$,]", "", regex=True)   # remove $ and commas
+                            .str.strip()
+                            .replace({"": np.nan, "nan": np.nan})   # blanks → NaN
+                        )
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+                print(df[MONEY_COLUMNS].dtypes)
+
+            elif webpage == "vauto":
+
+                df = df.rename(columns=NECESSARY_RENAME_MAP_VAUTO)
+                df["store"] = "Taverna INFINITI North Miami - MP6497"
+            elif webpage == "drivecentric":
+                df = df.rename(columns=NECESSARY_RENAME_MAP_DRIVECENTRIC)
+            else:
+                df = df.rename(columns=NECESSARY_RENAME_MAP)
 
             #test
             validated_path = os.path.join(base_dir, "validated", webpage)

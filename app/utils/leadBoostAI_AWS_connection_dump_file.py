@@ -53,8 +53,22 @@ def wait_for_query(execution_id):
     
 
 
+# def athena_table_exists(database, table_name, athena_output):
+#     query = f"SHOW TABLES IN {database} LIKE '{table_name}';"
+#     execution_id = run_athena_query(query, database, athena_output)
+#     state = wait_for_query(execution_id)
+#     logger.info(f"Athena table check state: {state}")
+
+#     if state != "SUCCEEDED":
+#         logger.error(f"Athena table check failed: {state}")
+#         return False
+
+#     results = athena.get_query_results(QueryExecutionId=execution_id)
+#     logger.info(f"Athena table check results: {results}")
+#     return len(results["ResultSet"]["Rows"]) > 0
+
 def athena_table_exists(database, table_name, athena_output):
-    query = f"SHOW TABLES IN {database} LIKE '{table_name}';"
+    query = f"SHOW TABLES IN {database} LIKE '{table_name}'"
     execution_id = run_athena_query(query, database, athena_output)
     state = wait_for_query(execution_id)
     logger.info(f"Athena table check state: {state}")
@@ -64,38 +78,82 @@ def athena_table_exists(database, table_name, athena_output):
         return False
 
     results = athena.get_query_results(QueryExecutionId=execution_id)
-    logger.info(f"Athena table check results: {results}")
-    return len(results["ResultSet"]["Rows"]) > 0
+    rows = results.get("ResultSet", {}).get("Rows", [])
+
+    # Extract actual table names returned
+    table_names = [
+        r["Data"][0].get("VarCharValue")
+        for r in rows
+        if r.get("Data") and len(r["Data"]) > 0 and r["Data"][0].get("VarCharValue")
+    ]
+
+    logger.info(f"SHOW TABLES returned: {table_names}")
+    return table_name in table_names
 
 
 def create_athena_carguru_table_if_not_exists(
     database, table_name, bucket, project_name, athena_output
 ):
+    # query = f"""
+    # CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table_name} (
+    #     make string,
+    #     model string,
+    #     year int,
+    #     trim string,
+    #     type string,
+    #     vin string,
+    #     stock_id string,
+
+    #     price string,
+    #     deal_rating string,
+    #     new_price string,
+    #     new_deal_rating string,
+
+    #     cargurus_imv string,
+    #     price_change string,
+    #     price_change_to_next_best_deal_rating string,
+    #     price_at_next_deal_rating string,
+
+    #     days_at_dealership int,
+    #     days_on_cargurus int,
+    #     saves int,
+
+    #     recommended_price string,
+    #     mds string,
+    #     opportunity string,
+    #     turn_time string,
+    #     store string
+    # )
+    # PARTITIONED BY (
+    #     year string,
+    #     month string,
+    #     day string
+    # )
+    # STORED AS PARQUET
+    # LOCATION 's3://{bucket}/{project_name}/'
+    # """
+
     query = f"""
     CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table_name} (
         make string,
         model string,
-        year int,
+        vehicle_year bigint,    
         trim string,
         type string,
         vin string,
         stock_id string,
-
-        price string,
+        price double,
         deal_rating string,
-        new_price string,
+        new_price double,
         new_deal_rating string,
-
-        cargurus_imv string,
-        price_change string,
-        price_change_to_next_best_deal_rating string,
-        price_at_next_deal_rating string,
-
-        days_at_dealership int,
-        days_on_cargurus int,
-        saves int,
-
-        recommended_price string,
+        cargurus_imv double,
+        price_change double,
+        price_change_to_next_best_deal_rating double,
+        price_at_next_deal_rating double,
+        days_at_dealership bigint,
+        days_on_cargurus bigint,
+        saves double,
+        recommended_price double,
         mds string,
         opportunity string,
         turn_time string,
@@ -104,7 +162,8 @@ def create_athena_carguru_table_if_not_exists(
     PARTITIONED BY (
         year string,
         month string,
-        day string
+        day string,
+        platform_name string
     )
     STORED AS PARQUET
     LOCATION 's3://{bucket}/{project_name}/'
@@ -240,7 +299,8 @@ def create_athena_vauto_table_if_not_exists(
         jd_power_trade_in_diff_clean string,
         vehicle_year bigint,
         make string,
-        model string
+        model string,
+        store string
     )
     PARTITIONED BY (
         year string,
@@ -350,13 +410,17 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
     #     create_athena_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
     
     if table_name == ATHENA_CARGURU_TABLE:
+        # if athena_table_exists(database, table_name, athena_output):
+        #     logger.info(f"Dropping Athena table: {table_name}")
+        #     drop_athena_table(database, table_name, athena_output)
+
         if not athena_table_exists(database, table_name, athena_output):
             logger.info(f"Creating Athena table: {table_name}")
             create_athena_carguru_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
     elif table_name == ATHENA_VAUTO_TABLE:
-        # if athena_table_exists(database, table_name, athena_output):
-        #     logger.info(f"Dropping Athena table: {table_name}")
-        #     drop_athena_table(database, table_name, athena_output)
+        if athena_table_exists(database, table_name, athena_output):
+            logger.info(f"Dropping Athena table: {table_name}")
+            drop_athena_table(database, table_name, athena_output)
 
         if not athena_table_exists(database, table_name, athena_output):
             logger.info(f"Creating Athena table: {table_name}")
