@@ -418,9 +418,9 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
             logger.info(f"Creating Athena table: {table_name}")
             create_athena_carguru_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
     elif table_name == ATHENA_VAUTO_TABLE:
-        if athena_table_exists(database, table_name, athena_output):
-            logger.info(f"Dropping Athena table: {table_name}")
-            drop_athena_table(database, table_name, athena_output)
+        # if athena_table_exists(database, table_name, athena_output):
+        #     logger.info(f"Dropping Athena table: {table_name}")
+        #     drop_athena_table(database, table_name, athena_output)
 
         if not athena_table_exists(database, table_name, athena_output):
             logger.info(f"Creating Athena table: {table_name}")

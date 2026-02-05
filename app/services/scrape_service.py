@@ -8,6 +8,9 @@ from selenium import webdriver
 import pyotp
 import resend
 import sys
+import pandas as pd
+import numpy as np
+from datetime import datetime
 import traceback
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
@@ -15,91 +18,24 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from core.logging import logger
-import pandas as pd
-import numpy as np
+import asyncio
+from services.data_processing import DataProcessor
 import glob
-from utils.leadBoostAI_AWS_connection_dump_file import upload_df_to_s3_parquet
-from datetime import datetime
 from dotenv import load_dotenv
-
 load_dotenv()
 base_dir = os.getcwd()
-
-# S3 Upload Constants
-BUCKET = os.getenv("S3_BUCKET")
-PROJECT_NAME = os.getenv("S3_PROJECT_NAME")
-ATHENA_DB = os.getenv("ATHENA_DB")
-ATHENA_VAUTO_TABLE = os.getenv("ATHENA_VAUTO_TABLE")
-ATHENA_CARGURU_TABLE = os.getenv("ATHENA_CARGURU_TABLE")
-ATHENA_OUTPUT = os.getenv("ATHENA_OUTPUT")
-ATHENA_DRIVECENTRIC_TABLE = os.getenv("ATHENA_DRIVECENTRIC_TABLE")
 
 # Global Session Store: {session_id: driver}
 # In a production environment, this might need more robust handling (e.g., Redis + Grid)
 # but for this standalone service, a global dict works.
 SESSIONS: Dict[str, webdriver.Chrome] = {}
-NECESSARY_RENAME_MAP_DRIVECENTRIC={}
-NECESSARY_RENAME_MAP={}
-NECESSARY_RENAME_MAP_VAUTO = {
-    "Photo Thumbnail": "photo_thumbnail",
-    "Red/Black": "red_black",
-    "Autowriter Description": "autowriter_description",
-    "Recall Status Icon Small": "recall_status_icon_small",
-    "Stock #": "stock_id",
-    "Interior Color": "interior_color",
-    "Req. Fields Missing": "req_fields_missing",
-    "Adjusted % of Market": "adjusted_pct_of_market",
-    "Adj Cost To Market": "adj_cost_to_market",
-    "KBB.com Fair Market Range High": "kbb_fair_market_range_high",
-    "Last $ Change": "last_change",
 
-    # AutoTrader
-    "AutoTrader.com List Price": "autotrader_list_price",
-    "AutoTrader.com Odometer": "autotrader_odometer",
-    "AutoTrader.com Image Count": "autotrader_image_count",
-    "AutoTrader.com SRP": "autotrader_srp",
-    "AutoTrader.com VDP": "autotrader_vdp",
-    "AutoTrader.com % VDP": "autotrader_pct_vdp",
-
-    # Cars.com
-    "Cars.com List Price": "cars_list_price",
-    "Cars.com Odometer": "cars_odometer",
-    "Cars.com Image Count": "cars_image_count",
-    "Cars.com SRP": "cars_srp",
-    "Cars.com VDP": "cars_vdp",
-    "Cars.com % VDP": "cars_pct_vdp",
-
-    # CarGurus
-    "CarGurus List Price": "cargurus_list_price",
-    "CarGurus Odometer": "cargurus_odometer",
-    "CarGurus Image Count": "cargurus_image_count",
-    "CarGurus SRP": "cargurus_srp",
-    "CarGurus VDP": "cargurus_vdp",
-    "CarGurus % VDP": "cargurus_pct_vdp",
-
-    # J.D. Power
-    "J.D. Power Trade In Clean": "jd_power_trade_in_clean",
-    "J.D. Power Trade In Diff Clean": "jd_power_trade_in_diff_clean",
-}
-
-NECESSARY_RENAME_MAP_CARGURUS = {
-    "Year": "vehicle_year",  # vehicle year (avoid conflict with partition year)
-    "Stock#": "stock_id",
-    "Deal Rating": "deal_rating",
-    "New Price": "new_price",
-    "New Deal Rating": "new_deal_rating",
-    "CarGurus IMV": "cargurus_imv",
-    "Price Change": "price_change",
-    "Price Change to Next Best Deal Rating": "price_change_to_next_best_deal_rating",
-    "Price at Next Deal Rating": "price_at_next_deal_rating",
-    "Days at Dealership": "days_at_dealership",
-    "Days on CarGurus": "days_on_cargurus",
-    "Recommended price": "recommended_price",
-    "Turn time": "turn_time",
-}
 
 
 class ScrapeService:
+    def __init__(self):
+        self.data_processor = DataProcessor()
+
     @staticmethod
     def setup_driver(webpage):
         # Define paths - adapting to be relative to the service or project root
@@ -247,193 +183,7 @@ class ScrapeService:
     # --- Flows ---
 
     def upload_latest_file_to_s3(self, webpage: str):
-        try:
-            if webpage == "vauto":
-                download_path = os.path.join(base_dir, "downloads", "vauto")
-            elif webpage == "cargurus":
-                download_path = os.path.join(base_dir, "downloads", "cargurus")
-            elif webpage == "drivecentric":
-                download_path = os.path.join(base_dir, "downloads", "drivecentric")
-            else:
-                download_path = os.path.join(base_dir, "downloads", "other")
-            # Get list of files in download path
-            list_of_files = glob.glob(os.path.join(download_path, "*")) 
-            logger.info(f"List of files found: {list_of_files}")
-            
-            if not list_of_files:
-                logger.warning("No files found in downloads directory to upload.")
-                return
-
-            # Find the latest file based on creation time
-            latest_file = max(list_of_files, key=os.path.getctime)
-            logger.info(f"Latest file found: {latest_file}")
-
-            # Read file into DataFrame
-            if latest_file.endswith(".csv"):
-                df = pd.read_csv(latest_file)
-
-            elif latest_file.endswith(".xls"):
-                logger.info("xls file found")
-                xlsx_path = latest_file.replace(".xls", ".xlsx")
-
-                df = pd.read_excel(latest_file, engine="xlrd")
-                df.to_excel(xlsx_path, index=False, engine="openpyxl")
-                df = pd.read_excel(xlsx_path)
-
-            elif latest_file.endswith(".xlsx"):
-                df = pd.read_excel(latest_file)
-
-            else:
-                logger.warning(f"Unsupported file format: {latest_file}")
-                return
-
-        # ---------- SANITIZE DATAFRAME (PERMANENT FIX) ----------
-            for col in df.columns:
-                if df[col].dtype == "object":
-
-                    # # Try to understand if column is numeric
-                    # numeric_ratio = (
-                    #     pd.to_numeric(df[col], errors="coerce")
-                    #     .notna()
-                    #     .mean()
-                    # )
-
-                    # if numeric_ratio > 0.8:
-                    #     # Mostly numeric → clean & convert
-                    #     df[col] = (
-                    #         df[col]
-                    #         .astype(str)
-                    #         .str.replace(",", "", regex=False)
-                    #     )
-                    #     df[col] = pd.to_numeric(df[col], errors="coerce")
-                    #     logger.info(f"Column '{col}' normalized as NUMERIC")
-                    # else:
-                        # Mostly text → force string
-                    df[col] = (
-                        df[col]
-                        .astype(str)
-                        .replace("nan", None)
-                    )
-                    logger.info(f"Column '{col}' normalized as STRING")
-        # -------------------------------------------------------
-
-
-            # Date partitions
-            now = datetime.utcnow()
-            year = now.year
-            month = f"{now.month:02d}"
-            day = f"{now.day:02d}"
-
-            # ---------- ADD EMPTY PARTITION COLUMNS ----------
-            for col in ["year", "month", "day"]:
-                if col not in df.columns:
-                    logger.info(f"Adding empty column: {col}")
-                    df[col] = None
-
-            logger.info("Empty columns added: year, month, day")
-            logger.info(f"Year: {year}, Month: {month}, Day: {day}")
-            df["year"] = year
-            df["month"] = month
-            df["day"] = day
-            
-            if "stock#" in df.columns.str.lower() or "stock #" in df.columns.str.lower():
-                df.rename(columns={"stock#": "stock_id"}, inplace=True)
-                logger.info("Renamed 'stock#' column to 'stock_id'")
-            
-            df.columns = (
-                df.columns
-                .astype(str)
-                .str.replace("\n", " ")
-                .str.replace("\r", " ")
-                .str.replace(r"\s+", " ", regex=True)
-                .str.strip()
-            )
-            if webpage == "cargurus":
-                df = df.rename(columns=NECESSARY_RENAME_MAP_CARGURUS)
-                df.columns = df.columns.str.lower()
-
-                MONEY_COLUMNS = [
-                    "price",
-                    "new_price",
-                    "cargurus_imv",
-                    "price_change",
-                    "price_change_to_next_best_deal_rating",
-                    "price_at_next_deal_rating",
-                    "recommended_price",
-                ]
-
-                for col in MONEY_COLUMNS:
-                    if col in df.columns:
-                        df[col] = (
-                            df[col]
-                            .astype(str)
-                            .str.replace(r"[\$,]", "", regex=True)   # remove $ and commas
-                            .str.strip()
-                            .replace({"": np.nan, "nan": np.nan})   # blanks → NaN
-                        )
-                        df[col] = pd.to_numeric(df[col], errors="coerce")
-                print(df[MONEY_COLUMNS].dtypes)
-
-            elif webpage == "vauto":
-
-                df = df.rename(columns=NECESSARY_RENAME_MAP_VAUTO)
-                df["store"] = "Taverna INFINITI North Miami - MP6497"
-            elif webpage == "drivecentric":
-                df = df.rename(columns=NECESSARY_RENAME_MAP_DRIVECENTRIC)
-            else:
-                df = df.rename(columns=NECESSARY_RENAME_MAP)
-
-            #test
-            validated_path = os.path.join(base_dir, "validated", webpage)
-            os.makedirs(validated_path, exist_ok=True)
-            # ---------- SAVE LOCALLY FOR VERIFICATION ----------
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-
-            local_csv = os.path.join(
-                validated_path,
-                f"{webpage}_validated_{timestamp}.csv"
-            )
-
-            local_parquet = os.path.join(
-                validated_path,
-                f"{webpage}_validated_{timestamp}.parquet"
-            )
-
-            df.to_csv(local_csv, index=False)
-            df.to_parquet(local_parquet, index=False)
-
-            logger.info(f"Local CSV saved for validation: {local_csv}")
-            logger.info(f"Local Parquet saved for validation: {local_parquet}")
-            # --------------------------------------------------
-
-            if webpage == "vauto":
-                table_name = ATHENA_VAUTO_TABLE
-            elif webpage == "cargurus":
-                table_name = ATHENA_CARGURU_TABLE
-            elif webpage == "drivecentric":
-                table_name = ATHENA_DRIVECENTRIC_TABLE
-
-            else:
-                raise Exception(f"Unknown webpage: {webpage}")
-
-            # Upload to S3
-            s3_path = upload_df_to_s3_parquet(
-                df=df,
-                bucket=BUCKET,
-                project_name=PROJECT_NAME,
-                database=ATHENA_DB,
-                table_name=table_name,
-                athena_output=ATHENA_OUTPUT,
-                webpage=webpage
-            )
-            # s3_path = ""
-            logger.info(f"File successfully uploaded to S3: {s3_path}")
-            return s3_path
-
-        except Exception as e:
-            logger.error(f"Error uploading to S3: {e}")
-            # self.send_error_email("upload_latest_file_to_s3", e)
-            raise e
+        return self.data_processor.process_and_upload(webpage, base_dir)
 
     async def start_login_flow(self, username: str, password: str, report_name: str) -> Dict[str, str]:
         session_id = str(uuid.uuid4())
