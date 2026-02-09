@@ -117,6 +117,7 @@ class DataProcessor:
             df = self._sanitize_dataframe(df)
             df = self._add_partitions(df)
             df = self._standardize_columns(df, webpage)
+            # logger.info(f"dtypes before upload parquet:\n{df.dtypes}")
 
             # Local Validation Save
             self._save_local_validation(df, webpage, base_dir)

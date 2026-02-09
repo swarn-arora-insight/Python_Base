@@ -1,6 +1,3 @@
-
-#####################################################
-
 import os
 import boto3
 import pandas as pd
@@ -53,21 +50,6 @@ def wait_for_query(execution_id):
         logger.info("Waiting for query execution to complete...")
     
 
-
-# def athena_table_exists(database, table_name, athena_output):
-#     query = f"SHOW TABLES IN {database} LIKE '{table_name}';"
-#     execution_id = run_athena_query(query, database, athena_output)
-#     state = wait_for_query(execution_id)
-#     logger.info(f"Athena table check state: {state}")
-
-#     if state != "SUCCEEDED":
-#         logger.error(f"Athena table check failed: {state}")
-#         return False
-
-#     results = athena.get_query_results(QueryExecutionId=execution_id)
-#     logger.info(f"Athena table check results: {results}")
-#     return len(results["ResultSet"]["Rows"]) > 0
-
 def athena_table_exists(database, table_name, athena_output):
     query = f"SHOW TABLES IN {database} LIKE '{table_name}'"
     execution_id = run_athena_query(query, database, athena_output)
@@ -101,9 +83,9 @@ def create_athena_drivecentric_table_if_not_exists(
         store_name string,
         vehicle_1_stock_number string,
         vehicle_1_year_make_model_trim string,
-        deal_date_created timestamp,
+        deal_date_created string,
         current_stage string,
-        next_task timestamp,
+        next_task string,
         deal_sales_1 string,
         deal_bdc string,
         phone_count int,
@@ -121,55 +103,15 @@ def create_athena_drivecentric_table_if_not_exists(
     LOCATION 's3://{bucket}/{project_name}/'
 
     """
-    #     TBLPROPERTIES (
-    # 'parquet.compression'='SNAPPY'
-    # )
+
     execution_id = run_athena_query(query, database, athena_output)
     wait_for_query(execution_id)
-    print(f"🆕 Athena table ensured: {table_name}")
+    logger.info(f"Athena table ensured: {table_name}")
 
 
 def create_athena_carguru_table_if_not_exists(
     database, table_name, bucket, project_name, athena_output
 ):
-    # query = f"""
-    # CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table_name} (
-    #     make string,
-    #     model string,
-    #     year int,
-    #     trim string,
-    #     type string,
-    #     vin string,
-    #     stock_id string,
-
-    #     price string,
-    #     deal_rating string,
-    #     new_price string,
-    #     new_deal_rating string,
-
-    #     cargurus_imv string,
-    #     price_change string,
-    #     price_change_to_next_best_deal_rating string,
-    #     price_at_next_deal_rating string,
-
-    #     days_at_dealership int,
-    #     days_on_cargurus int,
-    #     saves int,
-
-    #     recommended_price string,
-    #     mds string,
-    #     opportunity string,
-    #     turn_time string,
-    #     store string
-    # )
-    # PARTITIONED BY (
-    #     year string,
-    #     month string,
-    #     day string
-    # )
-    # STORED AS PARQUET
-    # LOCATION 's3://{bucket}/{project_name}/'
-    # """
 
     query = f"""
     CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table_name} (
@@ -209,78 +151,12 @@ def create_athena_carguru_table_if_not_exists(
 
     execution_id = run_athena_query(query, database, athena_output)
     wait_for_query(execution_id)
-    print(f"🆕 Athena table ensured: {table_name}")
+    logger.info(f"Athena table ensured: {table_name}")
 
 
 def create_athena_vauto_table_if_not_exists(
     database, table_name, bucket, project_name, athena_output
 ):
-    # query = f"""
-    # CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table_name} (
-    # red_black string,
-
-    # carfax_has_report string,
-    # carfax_has_manufacturer_recall string,
-    # carfax_has_warnings string,
-    # carfax_has_problems string,
-
-    # certified string,
-    # tags string,
-
-    # vehicle string,
-    # body string,
-    # stock_id string,
-    # vin string,
-
-    # odometer bigint,
-    # color string,
-    # age int,
-
-    # price string,
-    # mkt_avg_price string,
-
-    # adjusted_pct_of_market string,
-    # adj_cost_to_market string,
-
-    # appraised_value string,
-    # appraiser string,
-    # book string,
-    # cost string,
-    # water string,
-    # markup string,
-    # last_change string,
-
-    # overall int,
-    # like_mine int,
-
-    # price_rank_description string,
-    # vrank_description string,
-
-    # autotrader_list_price string,
-    # autotrader_odometer bigint,
-    # autotrader_image_count int,
-    # autotrader_srp int,
-    # autotrader_vdp int,
-    # autotrader_pct_vdp string,
-
-    # cars_list_price string,
-    # cars_odometer bigint,
-    # cars_image_count int,
-    # cars_srp int,
-    # cars_vdp int,
-    # cars_pct_vdp string,
-
-    # provisioning_grade string
-    # )
-    # PARTITIONED BY (
-    #     year string,
-    #     month string,
-    #     day string
-    # )
-    # STORED AS PARQUET
-    # LOCATION 's3://{bucket}/{project_name}/'  
-    
-    # """
     query = f"""
     CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table_name} (
         photo_thumbnail double,
@@ -352,14 +228,14 @@ def create_athena_vauto_table_if_not_exists(
 
     execution_id = run_athena_query(query, database, athena_output)
     wait_for_query(execution_id)
-    print(f"🆕 Athena table ensured: {table_name}")
+    logger.info(f"Athena table ensured: {table_name}")
 
 
 def repair_athena_table(database, table_name, athena_output):
     query = f"MSCK REPAIR TABLE {table_name};"
     execution_id = run_athena_query(query, database, athena_output)
     wait_for_query(execution_id)
-    print("🔄 Athena partition repair completed")
+    logger.info("Athena partition repair completed")
 
 
 def repair_athena_table(database, table_name, athena_output):
@@ -409,19 +285,10 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
         filename = "versionauction_drive_centric_inventory_records"
         # Normalize column names if needed
         df.columns = df.columns.str.strip()
-
-        # Convert to real timestamps (your format looks like: 02-05-2026 23:43)
+        # logger.info(f"dtypes before conversion to deal date created and next task parquet:\n{df.dtypes}")
         for col in ["deal_date_created", "next_task"]:
             if col in df.columns:
-                df[col] = pd.to_datetime(
-                    df[col].astype(str).str.strip().replace({"": None, "nan": None, "None": None}),
-                    format="%m-%d-%Y %H:%M",
-                    errors="coerce",
-                )
-
-        # Optional: log dtypes to confirm
-        logger.info(f"dtypes before parquet:\n{df.dtypes}")
-
+                df[col] = df[col].astype(str).str.strip()
 
     s3_key = (
         f"{project_name}/"
@@ -458,10 +325,6 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
     # wait_for_query(db_execution_id)
     # logger.info(f"Athena database dropped: {database}")
 
-    # #  Ensure Athena table exists
-    # if not athena_table_exists(database, table_name, athena_output):
-    #     create_athena_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
-    
     if table_name == ATHENA_CARGURU_TABLE:
         # if athena_table_exists(database, table_name, athena_output):
         #     logger.info(f"Dropping Athena table: {table_name}")
@@ -492,8 +355,7 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
         repair_athena_table(database, table_name, athena_output)
     except Exception as e:
         logger.error(f"Athena repair failed (likely permission issue): {e}")
-        # We don't raise here because the S3 upload was successful
-        # and checking Athena permissions might be out of user's immediate control.
+
     BUCKET = "taverna-auto-job"
     KEY = f"leadBoostAI/year={year}/month={month}/day={day}/platform_name={platform}/{filename}.parquet"
 
@@ -504,31 +366,6 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
     except Exception as e:
         logger.error("S3 parquet file NOT found", e)
     return s3_path
-
-
-# if __name__ == "__main__":
-
-#     ## Write filepath where file get download
-#     FILEPATH = r""
-#     df = pd.read_csv(FILEPATH)
-
-#     BUCKET = "taverna-auto-job"
-#     PROJECT_NAME = "leadBoostAI"
-#     ATHENA_DB = "leadboost_db"
-#     ATHENA_TABLE = "leadboost_table"
-#     ATHENA_OUTPUT = "s3://taverna-auto-job/leadBoostAI/athena-results/"
-
-#     upload_df_to_s3_parquet(
-#         df=df,
-#         bucket=BUCKET,
-#         project_name=PROJECT_NAME,
-#         database=ATHENA_DB,
-#         table_name=ATHENA_TABLE,
-#         athena_output=ATHENA_OUTPUT
-#     )
-
-
-
 
 
 

@@ -10,3 +10,6 @@ class StartScrapeRequest(BaseModel):
 class OtpRequest(BaseModel):
     session_id: str
     otp: str
+
+class otpDrivecentricRequest(BaseModel):
+    otp: str

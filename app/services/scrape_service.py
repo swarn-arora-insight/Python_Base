@@ -3,7 +3,9 @@ import os
 import time
 import uuid
 import re
+import json
 import logging
+import shutil
 from typing import Dict, Optional, Any
 from functools import wraps
 from enum import Enum
@@ -130,17 +132,6 @@ class ScrapeService:
         driver = webdriver.Chrome(options=chrome_options)
         return driver
 
-    # def get_element(self, driver, by, value, timeout=30):
-    #     try:
-    #         # logger.info(f"Looking for element: {value} by {by}")
-    #         element = WebDriverWait(driver, timeout).until(
-    #             EC.presence_of_element_located((by, value))
-    #         )
-    #         return element
-    #     except Exception as e:
-    #         # logger.error(f"Element not found: {value} by {by}. Error: {e}")
-    #         raise
-    
 
     def get_element(self, driver, by, value, timeout=30, condition="present"):
         wait = WebDriverWait(driver, timeout)
@@ -168,46 +159,6 @@ class ScrapeService:
                 logger.error(f"JS click also failed: {js_e}")
                 raise
 
-    # def click_element(self, driver, element, retries=2):
-    #     last_err = None
-
-    #     for _ in range(retries + 1):
-    #         try:
-    #             print("Scrolling into view")
-    #             driver.execute_script("arguments[0].scrollIntoView({block:'center'});", element)
-                
-    #             try:
-    #                 print("Clicking element")
-    #                 element.click()
-    #                 logger.info(f"Clicked element successfully")
-    #                 return
-    #             except ElementClickInterceptedException as e:
-    #                 logger.warning(f"Click intercepted: {e}. Trying JS click...")
-    #                 driver.execute_script("arguments[0].click();", element)
-    #                 logger.info("JS click successful.")
-    #                 return
-
-    #         except StaleElementReferenceException as e:
-    #             print("Element became stale")
-    #             # element got detached due to Angular re-render
-    #             last_err = e
-    #             logger.warning("Element became stale, retrying click...")
-    #             continue
-
-    #         except Exception as e:
-    #             last_err = e
-    #             print("Normal click failed")
-    #             logger.warning(f"Normal click failed: {e}. Trying JS click...")
-    #             try:
-    #                 driver.execute_script("arguments[0].click();", element)
-    #                 logger.info("JS click successful.")
-    #                 return
-    #             except Exception as js_e:
-    #                 last_err = js_e
-    #                 logger.error(f"JS click also failed: {js_e}")
-    #                 break
-
-    #     raise last_err
 
     def close_driver_safely(self, session_id):
         if session_id in SESSIONS:
@@ -390,69 +341,51 @@ class ScrapeService:
         logger.info(f"DriveCentric session started: {session_id}")
 
         try:
-            status = await asyncio.to_thread(self._perform_drivecentric_login_actions, driver, username, password)
+            status = await asyncio.to_thread(self._perform_drivecentric_login_actions, driver, username, password, session_id)
             
-            if status == "OTP_NEEDED":
-                return {
-                    "status": "waiting_for_otp", 
-                    "session_id": session_id, 
-                    "message": "2FA required. Please submit OTP."
-                }
-            else:
+            # The login action now handles the full flow including waiting for OTP if needed
+            if status == "LOGGED_IN":
                 await asyncio.to_thread(self._perform_drivecentric_post_login_actions, driver)
                 await asyncio.to_thread(self.close_driver_safely, session_id)
                 await asyncio.to_thread(self.upload_latest_file_to_s3, ScraperType.DRIVECENTRIC.value)
                 
                 return {"status": "success", "message": "DriveCentric scrape completed successfully."}
+            else:
+                 # Should not happen with new flow unless error
+                 raise Exception(f"Unexpected login status: {status}")
         except Exception as e:
             logger.error(f"Error in start_drivecentric_login_flow: {e}")
             # await asyncio.to_thread(self.send_error_email, "start_drivecentric_login_flow", e)
             await asyncio.to_thread(self.close_driver_safely, session_id)
             raise e
 
-    async def submit_drivecentric_otp_flow(self, session_id: str, otp: str) -> Dict[str, str]:
-        if session_id not in SESSIONS:
-            raise ValueError("Session not found or expired")
-        
-        driver = SESSIONS[session_id]
-        
+
+
+
+    def update_otp_file(self, otp: str):
+        """Updates the OTP file for drivecentric to status 200."""
+        platform_data = BASE_DIR / "platform_data"
+        session_dir = platform_data / "drivecentric"
+        otp_file = session_dir / "logfile_otp.json"
+
+        if not otp_file.exists():
+            raise ValueError("OTP session not found or file missing")
+
         try:
-            def _drivecentric_otp_logic():
-                logger.info("Waiting for OTP input field...")
-                # Updated selector based on user provided HTML: id="code"
-                otp_field = self.get_element(driver, By.ID, "code") 
-                otp_field.send_keys(otp)
-                
-                # Updated submit button based on user provided HTML
-                verify_btn = self.get_element(driver, By.CSS_SELECTOR, "button[type='submit']")
-                if verify_btn:
-                    self.click_element(driver, verify_btn)
-                    logger.info("OTP submitted")
-                else:
-                    logger.warning("OTP button not found")
-                
-                # Wait for successful login URL
-                logger.info("Waiting for redirect to sales pipeline...")
-                try:
-                    WebDriverWait(driver, 30).until(EC.url_contains("/pipeline/sales"))
-                    logger.info("Redirected to sales pipeline successfully.")
-                except Exception:
-                    logger.warning("Timed out waiting for sales pipeline URL. Proceeding to post-login actions anyway.")
+            with open(otp_file, "r") as f:
+                file_data = json.load(f)
 
-                self._perform_drivecentric_post_login_actions(driver)
+            file_data["otp"] = otp
+            file_data["status"] = "200"
 
-            await asyncio.to_thread(_drivecentric_otp_logic)
+            with open(otp_file, "w") as f:
+                json.dump(file_data, f, indent=2)
             
-            await asyncio.to_thread(self.close_driver_safely, session_id)
+            logger.info(f"Updated OTP file for drivecentric")
             
-            await asyncio.to_thread(self.upload_latest_file_to_s3, ScraperType.DRIVECENTRIC.value)
-            return {"status": "success", "message": "DriveCentric scrape completed successfully."}
-        
         except Exception as e:
-            logger.error(f"Error in submit_drivecentric_otp_flow: {e}")
-            await asyncio.to_thread(self.send_error_email, "submit_drivecentric_otp_flow", e)
-            await asyncio.to_thread(self.close_driver_safely, session_id)
-            raise e
+            logger.error(f"Failed to update OTP file: {e}")
+            raise
 
     # --- Internal Selenium Actions ---
 
@@ -566,9 +499,6 @@ class ScrapeService:
             # Handle "Promote the right cars" popup
             try:
                 logger.info("Checking for post-login popup...")
-                # Using the specific class from user provided HTML, but XPATH text is more readable and likely stable enough for "Close"
-                # The user HTML: <button class="hRxAe jve5q" type="button">Close</button>
-                # OR <button aria-label="Close dialog" ...>
                 
                 # Trying specifically the "Close" text button first as it matches the user's intent to "close this pop"
                 close_btn = self.get_element(driver, By.XPATH, "//button[text()='Close']", timeout=10)
@@ -700,9 +630,6 @@ class ScrapeService:
                         final_df.to_excel(combined_path, index=False)
                         logger.info(f"Aggregated file saved to: {combined_path}")
                         
-                        # Trigger upload for this specific file, or rely on upload_latest_file_to_s3 picking it up
-                        # Since upload_latest_file_to_s3 picks the latest file, and we just saved this, it should work.
-                        # self.upload_latest_file_to_s3("cargurus")
                     else:
                         logger.warning("No dataframes to aggregate.")
                 except Exception as e:
@@ -712,7 +639,7 @@ class ScrapeService:
         else:
             logger.info("Failed to redirect to CarGurus domain.")
 
-    def _perform_drivecentric_login_actions(self, driver, username, password):
+    def _perform_drivecentric_login_actions(self, driver, username, password, session_id):
         url = "https://app.drivecentric.com"
         driver.get(url)
         logger.info("Navigated to DriveCentric Login Page")
@@ -748,9 +675,6 @@ class ScrapeService:
             
             time.sleep(5)
 
-            # Check for OTP Page
-            # Unique element on OTP page: <drc-custom-confirm-sign-in> or input with id="code"
-            # Using input id="code" as a reliable indicator
             try:
                 # Wait for OTP input to appear
                 otp_input = self.get_element(driver, By.ID, "code", timeout=5)
@@ -758,41 +682,56 @@ class ScrapeService:
                 if otp_input:
                     logger.info("OTP field detected. 2FA required.")
                     
-                    # Check for TOTP Secret
-                    totp_secret = os.getenv("DRIVECENTRIC_TOTP_SECRET")
-                    if totp_secret:
-                        try:
-                            logger.info("Auto-generating TOTP code...")
-                            totp = pyotp.TOTP(totp_secret)
-                            current_otp = totp.now()
-                            
-                            otp_input.send_keys(current_otp)
-                            logger.info("Auto-filled OTP code.")
-                            
-                            # Click Verify/Submit
-                            verify_btn = self.get_element(driver, By.CSS_SELECTOR, "button[type='submit']")
-                            if verify_btn:
-                                self.click_element(driver, verify_btn)
-                                logger.info("Submitted OTP automatically.")
-                                
-                                # Wait for redirect
-                                try:
-                                    WebDriverWait(driver, 15).until(EC.url_contains("/pipeline/sales"))
-                                    logger.info("Auto-2FA successful. Redirected to sales pipeline.")
-                                    return "LOGGED_IN"
-                                except Exception:
-                                    logger.warning("Auto-2FA submitted but did not redirect quickly. Checking URL again...")
-                            else:
-                                logger.warning("Verify button not found for auto-2FA.")
-                                
-                        except Exception as otp_e:
-                            logger.error(f"Error during auto-2FA: {otp_e}")
-                            # Fallback to manual if auto fails
-                    else:
-                        logger.info("No DRIVECENTRIC_TOTP_SECRET found. Manual OTP required.")
+                    # Setup directory for file-based OTP
+                    platform_data = BASE_DIR / "platform_data"
+                    session_dir = platform_data / "drivecentric"
+                    session_dir.mkdir(parents=True, exist_ok=True)
+                    otp_file = session_dir / "logfile_otp.json"
 
-                    return "OTP_NEEDED"
-            except Exception:
+                    # Initialize OTP file
+                    with open(otp_file, "w") as f:
+                        json.dump({"otp": "", "status": "WAITING_FOR_OTP"}, f, indent=2)
+                    
+                    logger.info(f"Initialized OTP file at {otp_file}. Waiting for OTP...")
+
+                    # Wait for OTP from file
+                    otp_code = self._wait_for_otp_file(otp_file)
+                    
+                    if otp_code:
+                        logger.info(f"Retrieved OTP: {otp_code}")
+                        otp_input.send_keys(otp_code)
+                        
+                        # Click Verify/Submit
+                        verify_btn = self.get_element(driver, By.CSS_SELECTOR, "button[type='submit']")
+                        if verify_btn:
+                            self.click_element(driver, verify_btn)
+                            logger.info("Submitted OTP.")
+                            time.sleep(20)
+                            # Cleanup
+                            try:
+                                if otp_file.exists():
+                                    os.remove(otp_file)
+                                    logger.info(f"Cleaned OTP file for drivecentric")
+                            except Exception as e:
+                                logger.warning(f"Failed to clean OTP file: {e}")
+
+                            # Wait for redirect
+                            try:
+                                WebDriverWait(driver, 15).until(EC.url_contains("/pipeline/sales"))
+                                logger.info("2FA successful. Redirected to sales pipeline.")
+                                return "LOGGED_IN"
+                            except Exception:
+                                logger.warning("2FA submitted but did not redirect quickly. Checking URL again...")
+                        else:
+                            logger.error("Verify button not found.")
+                            return "ERROR"
+                    else:
+                        logger.error("OTP retrieval timed out or failed.")
+                        return "ERROR"
+
+            except Exception as e:
+                logger.error(f"Error handling OTP flow: {e}")
+                # Pass through to check for success anyway
                 pass
             
             # Check for success
@@ -800,28 +739,48 @@ class ScrapeService:
                  logger.info("Redirected to sales pipeline immediately.")
                  return "LOGGED_IN"
 
-            # If we are here, we might be loading or on an intermediate page. 
-            # Let's wait a bit more or assume logged in if no OTP was found but no error.
-            # But safer to return OTP_NEEDED if ANY ambiguity, or wait for URL.
-            
-            logger.info("Checking final URL state...")
-            try:
-                 WebDriverWait(driver, 10).until(EC.url_contains("/pipeline/sales"))
-                 return "LOGGED_IN"
-            except Exception:
-                 logger.warning("Did not reach sales pipeline and did not find OTP field. Potential issue.")
-                 # Fallback: check again for OTP just in case it loaded late
-                 try:
-                    if self.get_element(driver, By.ID, "code", timeout=2):
-                        return "OTP_NEEDED"
-                 except: 
-                     pass
-                 
-                 return "LOGGED_IN" # Assuming logged in for now, otherwise script would fail later
-
+            return "LOGGED_IN" # Assume logged in if no other errors, or let downstream fail
         except Exception as e:
-            logger.error(f"Error during DriveCentric login: {e}")
-            raise e
+            logger.error(f"Error in drivecentric login flow: {e}")
+            return f"Error in drivecentric login flow: {e}"
+
+
+
+    def _wait_for_otp_file(self, otp_file: Path, timeout=180) -> Optional[str]:
+        """Waits for the OTP file to have status 200 and returns the OTP."""
+        end_time = time.time() + timeout
+        logger.info(f"Waiting for OTP in {otp_file} (Timeout: {timeout}s)")
+        
+        while time.time() < end_time:
+            time.sleep(5)
+            try:
+                if not otp_file.exists():
+                    continue
+                
+                with open(otp_file, "r") as f:
+                    raw = f.read()
+                
+                if not raw.strip():
+                    continue
+                
+                data = json.loads(raw)
+                
+                if str(data.get("status")) == "200":
+                    otp = str(data.get("otp", "")).strip()
+                    logger.info("OTP received from file.")
+                    return otp
+                else:
+                    logger.info(f"Status not ready: {data.get('status')}")
+                    pass
+
+            except json.JSONDecodeError:
+                logger.warning("JSON parse error (likely partial write), retrying...")
+            except Exception as e:
+                logger.warning(f"Error reading logfile: {e}, retrying...")
+        
+        logger.error("OTP wait timed out.")
+        return None
+ 
 
     def _perform_drivecentric_post_login_actions(self, driver):
         logger.info("Performing DriveCentric post-login actions...")
@@ -848,7 +807,7 @@ class ScrapeService:
                     driver.get("https://app.drivecentric.com/#/mining/deals/")
                     time.sleep(5) # Wait for page load
 
-                    if "mining/deals/" not in driver.current_url:
+                    if not driver.EC.url_contains("mining/deals/"):
                         logger.error("Failed to navigate to Mining Deals")
                         driver.get("https://app.drivecentric.com/#/mining/deals/")
                         logger.info("Retrying to navigate to Mining Deals...")
@@ -884,7 +843,7 @@ class ScrapeService:
                     logger.error(f"Error processing store {store}: {inner_e}")
                     # self.send_error_email(f"DriveCentric Store Loop: {store}", inner_e)
                     continue
-            logger.info("Downloaded files map: ", downloaded_files_map)
+            logger.info(f"Downloaded files map:{downloaded_files_map}")
             # 6. Aggregate
             if downloaded_files_map:
                 all_dfs = []
@@ -989,30 +948,6 @@ class ScrapeService:
         try:
             logger.info("Applying filters...")
             
-            # # 1. Click "Add Filter"
-            # # Selector: <span ...>Add Filter</span> inside <drc-chip>
-            # add_filter_btn = self.get_element(driver, By.XPATH, "//span[contains(text(), 'Add Filter')]")
-            # self.click_element(driver, add_filter_btn)
-            # time.sleep(1)
-
-            # # 2. Select "Deal Date Created"
-            # # Selector: text inside <drc-single-selection-list-item>
-            # date_filter_opt = self.get_element(driver, By.XPATH, "//div[contains(text(), 'Deal Date Created')]")
-            # self.click_element(driver, date_filter_opt)
-            # time.sleep(1)
-
-            # # 3. Select "Yesterday"
-            # # Selector: text "Yesterday" (it's a label next to radio)
-            # yesterday_opt = self.get_element(driver, By.XPATH, "//span[contains(text(), 'Yesterday')]")
-            # self.click_element(driver, yesterday_opt)
-            # time.sleep(1)
-
-            # # 4. Click "Save"
-            # # Selector: button with text "Save" inside drc-button-popup list
-            # # The HTML shows a Save button in the footer of the popup. 
-            # # We can look for the button that specifically says "Save".
-            # save_btn = self.get_element(driver, By.XPATH, "//button//span[contains(text(), 'Save')]")
-            # self.click_element(driver, save_btn)
 
             add_filter_btn = self.get_element(driver, By.XPATH, "//span[normalize-space()='Add Filter']",condition="clickable")
             self.click_element(driver, add_filter_btn)

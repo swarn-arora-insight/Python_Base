@@ -1,7 +1,8 @@
 # app/api/v1/scrape_routes.py
 import os
+import asyncio
 from fastapi import APIRouter, HTTPException, Depends
-from schemas.scrape import StartScrapeRequest, OtpRequest
+from schemas.scrape import StartScrapeRequest, OtpRequest,otpDrivecentricRequest
 from services.scrape_service import ScrapeService
 from services.user_service import UserService
 from dotenv import load_dotenv
@@ -70,8 +71,8 @@ async def start_drivecentric_scrape(
     service: ScrapeService = Depends(get_scrape_service),
     user_info: dict = Depends(UserService.authenticate_token)
 ):
-    username = os.getenv("DRIVECENTRIC_USERNAME")
-    password = os.getenv("DRIVECENTRIC_PASSWORD")
+    username = str(os.getenv("DRIVECENTRIC_USERNAME"))
+    password = str(os.getenv("DRIVECENTRIC_PASSWORD"))
 
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and Password required for DriveCentric")
@@ -84,13 +85,14 @@ async def start_drivecentric_scrape(
 
 @router.post("/drivecentric/otp")
 async def submit_drivecentric_otp(
-    request: OtpRequest, 
+    request: otpDrivecentricRequest, 
     service: ScrapeService = Depends(get_scrape_service),
     user_info: dict = Depends(UserService.authenticate_token)
 ):
     try:
-        result = await service.submit_drivecentric_otp_flow(request.session_id, request.otp)
-        return result
+        # result = await service.submit_drivecentric_otp_flow(request.session_id, request.otp)
+        await asyncio.to_thread(service.update_otp_file, request.otp)
+        return {"status": "success", "message": "OTP submitted successfully."}
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
