@@ -2,7 +2,7 @@
 import os
 import asyncio
 from fastapi import APIRouter, HTTPException, Depends
-from schemas.scrape import StartScrapeRequest, OtpRequest,otpDrivecentricRequest
+from schemas.scrape import StartScrapeRequest, OtpRequest,otpDrivecentricRequest, otpVautoRequest
 from services.scrape_service import ScrapeService
 from services.user_service import UserService
 from dotenv import load_dotenv
@@ -52,14 +52,13 @@ async def start_cargurus_scrape(
 
 @router.post("/vauto/otp")
 async def submit_otp(
-    request: OtpRequest, 
+    request: otpVautoRequest, 
     service: ScrapeService = Depends(get_scrape_service),
     user_info: dict = Depends(UserService.authenticate_token)
 ):
-    report_name = os.getenv("VAUTO_REPORT_NAME", "Taverna Inventory IRECON PHOTOS4")
     try:
-        result = await service.submit_otp_flow(request.session_id, request.otp, report_name)
-        return result
+        await asyncio.to_thread(service.update_vauto_otp_file, request.otp)
+        return {"status": "success", "message": "OTP submitted successfully."}
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
@@ -91,7 +90,7 @@ async def submit_drivecentric_otp(
 ):
     try:
         # result = await service.submit_drivecentric_otp_flow(request.session_id, request.otp)
-        await asyncio.to_thread(service.update_otp_file, request.otp)
+        await asyncio.to_thread(service.update_drivecentric_otp_file, request.otp)
         return {"status": "success", "message": "OTP submitted successfully."}
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))

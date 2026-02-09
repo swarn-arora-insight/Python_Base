@@ -13,3 +13,6 @@ class OtpRequest(BaseModel):
 
 class otpDrivecentricRequest(BaseModel):
     otp: str
+
+class otpVautoRequest(BaseModel):
+    otp: str

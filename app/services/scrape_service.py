@@ -232,13 +232,7 @@ class ScrapeService:
             # Login action is blocking, so we await it in a thread
             status = await asyncio.to_thread(self._perform_login_actions, driver, username, password)
             
-            if status == "OTP_NEEDED":
-                return {
-                    "status": "waiting_for_otp", 
-                    "session_id": session_id, 
-                    "message": "2FA required. Please submit OTP."
-                }
-            else:
+            if status == "LOGGED_IN":
                 # Post login actions are also blocking
                 await asyncio.to_thread(self._perform_post_login_actions, driver, report_name)
                 
@@ -247,6 +241,8 @@ class ScrapeService:
                 await asyncio.to_thread(self.upload_latest_file_to_s3, ScraperType.VAUTO.value)
                 
                 return {"status": "success", "message": "Scrape completed successfully (No 2FA needed)."}
+            else:
+                 raise Exception(f"Unexpected login status: {status}")
         except (TimeoutException, NoSuchElementException) as e:
             logger.error(f"Selenium Error in start_login_flow: {type(e).__name__} - {e}")
             await asyncio.to_thread(self.send_error_email, "start_login_flow (Selenium Error)", e)
@@ -362,7 +358,7 @@ class ScrapeService:
 
 
 
-    def update_otp_file(self, otp: str):
+    def update_drivecentric_otp_file(self, otp: str):
         """Updates the OTP file for drivecentric to status 200."""
         platform_data = BASE_DIR / "platform_data"
         session_dir = platform_data / "drivecentric"
@@ -382,6 +378,31 @@ class ScrapeService:
                 json.dump(file_data, f, indent=2)
             
             logger.info(f"Updated OTP file for drivecentric")
+            
+        except Exception as e:
+            logger.error(f"Failed to update OTP file: {e}")
+            raise
+
+    def update_vauto_otp_file(self, otp: str):
+        """Updates the OTP file for vauto to status 200."""
+        platform_data = BASE_DIR / "platform_data"
+        session_dir = platform_data / "vauto"
+        otp_file = session_dir / "logfile_otp.json"
+
+        if not otp_file.exists():
+            raise ValueError("OTP session not found or file missing")
+
+        try:
+            with open(otp_file, "r") as f:
+                file_data = json.load(f)
+
+            file_data["otp"] = otp
+            file_data["status"] = "200"
+
+            with open(otp_file, "w") as f:
+                json.dump(file_data, f, indent=2)
+            
+            logger.info(f"Updated OTP file for vauto")
             
         except Exception as e:
             logger.error(f"Failed to update OTP file: {e}")
@@ -418,10 +439,54 @@ class ScrapeService:
             if sms_button:
                 self.click_element(driver, sms_button)
                 logger.info("SMS 2FA selected")
-                return "OTP_NEEDED"
-        except Exception:
-            logger.info("2FA screen not found or timed out. Assuming already logged in.")
-            return "LOGGED_IN"
+                
+                # Setup directory for file-based OTP
+                platform_data = BASE_DIR / "platform_data"
+                session_dir = platform_data / "vauto"
+                session_dir.mkdir(parents=True, exist_ok=True)
+                otp_file = session_dir / "logfile_otp.json"
+
+                # Initialize OTP file
+                with open(otp_file, "w") as f:
+                    json.dump({"otp": "", "status": "WAITING_FOR_OTP"}, f, indent=2)
+                
+                logger.info(f"Initialized OTP file at {otp_file}. Waiting for OTP...")
+                
+                # Wait for OTP from file
+                otp_code = self._wait_for_otp_file(otp_file)
+                
+                if otp_code:
+                    logger.info(f"Retrieved OTP: {otp_code}")
+                    otp_input = self.get_element(driver, By.ID, "input-verification-code")
+                    otp_input.send_keys(otp_code)
+                    
+                    verify_btn = self.get_element(driver, By.ID, "button-account-recovery-submit")
+                    if verify_btn:
+                        WebDriverWait(driver, 10).until(lambda d: verify_btn.is_enabled())
+                        self.click_element(driver, verify_btn)
+                        logger.info("OTP submitted")
+                        
+                        # Cleanup
+                        try:
+                            if otp_file.exists():
+                                os.remove(otp_file)
+                                logger.info(f"Cleaned OTP file for vauto")
+                        except Exception as e:
+                            logger.warning(f"Failed to clean OTP file: {e}")
+                        
+                        return "LOGGED_IN"
+                    else:
+                        logger.warning("OTP submit button not found")
+                        return "ERROR"
+                else:
+                    logger.error("OTP retrieval timed out or failed.")
+                    return "ERROR"
+
+        except Exception as e:
+            logger.error(f"Error in vAuto login flow: {e}")
+            return f"Error in vAuto login flow: {e}"
+            # logger.info("2FA screen not found or timed out. Assuming already logged in.")
+            # return "LOGGED_IN"
 
     def _perform_post_login_actions(self, driver, report_name):
         logger.info("Navigating to Inventory page...")
