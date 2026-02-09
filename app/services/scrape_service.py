@@ -2,8 +2,12 @@
 import os
 import time
 import uuid
+import re
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
+from functools import wraps
+from enum import Enum
+from pathlib import Path
 from selenium import webdriver
 import pyotp
 import resend
@@ -12,6 +16,12 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import traceback
+from selenium.common.exceptions import (
+    TimeoutException,
+    NoSuchElementException,
+    WebDriverException,
+    ElementClickInterceptedException
+)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
@@ -22,12 +32,28 @@ import asyncio
 from services.data_processing import DataProcessor
 import glob
 from dotenv import load_dotenv
+from selenium.common.exceptions import (
+    ElementClickInterceptedException,
+    StaleElementReferenceException
+)
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 load_dotenv()
-base_dir = os.getcwd()
+
+BASE_DIR = Path(os.getcwd())
+
+class ScraperType(Enum):
+    VAUTO = "vauto"
+    CARGURUS = "cargurus"
+    DRIVECENTRIC = "drivecentric"
+    OTHER = "other"
 
 # Global Session Store: {session_id: driver}
-# In a production environment, this might need more robust handling (e.g., Redis + Grid)
-# but for this standalone service, a global dict works.
 SESSIONS: Dict[str, webdriver.Chrome] = {}
 
 
@@ -37,34 +63,37 @@ class ScrapeService:
         self.data_processor = DataProcessor()
 
     @staticmethod
-    def setup_driver(webpage):
-        # Define paths - adapting to be relative to the service or project root
-        # Assuming run from project root or handling absolute paths carefully
-        # base_dir = os.getcwd() 
-        download_path = os.path.join(base_dir, "downloads")
-        if webpage == "vauto":
-            profile_path = os.path.join(base_dir, "chrome_data")
-            download_path = os.path.join(base_dir, "downloads", "vauto")
-        elif webpage == "cargurus":
-            profile_path = os.path.join(base_dir, "chrome_data_cargurus")
-            download_path = os.path.join(base_dir, "downloads", "cargurus")
-        elif webpage == "drivecentric":
-            profile_path = os.path.join(base_dir, "chrome_data_drivecentric")
-            download_path = os.path.join(base_dir, "downloads", "drivecentric")
+    def setup_driver(webpage: str) -> webdriver.Chrome:
+        download_path = BASE_DIR / "downloads"
+        profile_path = BASE_DIR / "chrome_data_other"
+
+        if webpage == ScraperType.VAUTO.value:
+            profile_path = BASE_DIR / "chrome_data"
+            download_path = BASE_DIR / "downloads" / "vauto"
+        elif webpage == ScraperType.CARGURUS.value:
+            profile_path = BASE_DIR / "chrome_data_cargurus"
+            download_path = BASE_DIR / "downloads" / "cargurus"
+        elif webpage == ScraperType.DRIVECENTRIC.value:
+            profile_path = BASE_DIR / "chrome_data_drivecentric"
+            download_path = BASE_DIR / "downloads" / "drivecentric"
         else:
-            profile_path = os.path.join(base_dir, "chrome_data_other")
-            download_path = os.path.join(base_dir, "downloads", "other")
-        if not os.path.exists(download_path):
+            download_path = BASE_DIR / "downloads" / "other"
+
+        if not download_path.exists():
             logger.info(f"Download path does not exist: {download_path}")
-            os.makedirs(download_path)
+            download_path.mkdir(parents=True, exist_ok=True)
         
         logger.info(f"Download path set to: {download_path}")
         logger.info(f"Profile path set to: {profile_path}")
 
         chrome_options = Options()
         chrome_options.add_argument("--start-maximized")
+        chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--window-size=1366,900")
-        # chrome_options.add_argument("--headless") 
+        
+        if os.getenv("HEADLESS_MODE", "false").lower() == "true":
+            chrome_options.add_argument("--headless")
+            logger.info("Running in Headless Mode") 
         
         chrome_options.add_experimental_option(
             "prefs",
@@ -76,7 +105,7 @@ class ScrapeService:
                 "network.cookie.cookieBehavior": 0,
                 "profile.block_third_party_cookies": False,
                 "profile.cookie_controls_mode": 0,
-                "download.default_directory": download_path,
+                "download.default_directory": str(download_path),
             },
         )
 
@@ -95,35 +124,90 @@ class ScrapeService:
         chrome_options.set_capability("unhandledPromptBehavior", "accept")
 
         # Local Chrome Profile (Persistence)
-        chrome_options.add_argument(f"--user-data-dir={profile_path}")
+        chrome_options.add_argument(f"--user-data-dir={str(profile_path)}")
         chrome_options.add_argument("--profile-directory=Default")
 
         driver = webdriver.Chrome(options=chrome_options)
         return driver
 
-    def get_element(self, driver, by, value, timeout=30):
-        try:
-            logger.info(f"Looking for element: {value} by {by}")
-            element = WebDriverWait(driver, timeout).until(
-                EC.presence_of_element_located((by, value))
-            )
-            return element
-        except Exception as e:
-            logger.error(f"Element not found: {value} by {by}. Error: {e}")
-            raise
+    # def get_element(self, driver, by, value, timeout=30):
+    #     try:
+    #         # logger.info(f"Looking for element: {value} by {by}")
+    #         element = WebDriverWait(driver, timeout).until(
+    #             EC.presence_of_element_located((by, value))
+    #         )
+    #         return element
+    #     except Exception as e:
+    #         # logger.error(f"Element not found: {value} by {by}. Error: {e}")
+    #         raise
+    
+
+    def get_element(self, driver, by, value, timeout=30, condition="present"):
+        wait = WebDriverWait(driver, timeout)
+
+        if condition == "present":
+            return wait.until(EC.presence_of_element_located((by, value)))
+        elif condition == "visible":
+            return wait.until(EC.visibility_of_element_located((by, value)))
+        elif condition == "clickable":
+            return wait.until(EC.element_to_be_clickable((by, value)))
+        else:
+            raise ValueError("condition must be: present | visible | clickable")
 
     def click_element(self, driver, element):
         try:
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", element)
             element.click()
-            logger.info("Clicked element successfully.")
+            logger.info(f"Clicked element successfully")
         except Exception as e:
             logger.warning(f"Normal click failed: {e}. Trying JS click...")
             try:
                 driver.execute_script("arguments[0].click();", element)
-                logger.info("JS click successful.")
+                logger.info(f"JS click successful")
             except Exception as js_e:
                 logger.error(f"JS click also failed: {js_e}")
                 raise
+
+    # def click_element(self, driver, element, retries=2):
+    #     last_err = None
+
+    #     for _ in range(retries + 1):
+    #         try:
+    #             print("Scrolling into view")
+    #             driver.execute_script("arguments[0].scrollIntoView({block:'center'});", element)
+                
+    #             try:
+    #                 print("Clicking element")
+    #                 element.click()
+    #                 logger.info(f"Clicked element successfully")
+    #                 return
+    #             except ElementClickInterceptedException as e:
+    #                 logger.warning(f"Click intercepted: {e}. Trying JS click...")
+    #                 driver.execute_script("arguments[0].click();", element)
+    #                 logger.info("JS click successful.")
+    #                 return
+
+    #         except StaleElementReferenceException as e:
+    #             print("Element became stale")
+    #             # element got detached due to Angular re-render
+    #             last_err = e
+    #             logger.warning("Element became stale, retrying click...")
+    #             continue
+
+    #         except Exception as e:
+    #             last_err = e
+    #             print("Normal click failed")
+    #             logger.warning(f"Normal click failed: {e}. Trying JS click...")
+    #             try:
+    #                 driver.execute_script("arguments[0].click();", element)
+    #                 logger.info("JS click successful.")
+    #                 return
+    #             except Exception as js_e:
+    #                 last_err = js_e
+    #                 logger.error(f"JS click also failed: {js_e}")
+    #                 break
+
+    #     raise last_err
 
     def close_driver_safely(self, session_id):
         if session_id in SESSIONS:
@@ -183,17 +267,20 @@ class ScrapeService:
     # --- Flows ---
 
     def upload_latest_file_to_s3(self, webpage: str):
-        return self.data_processor.process_and_upload(webpage, base_dir)
+        return self.data_processor.process_and_upload(webpage, str(BASE_DIR))
 
     async def start_login_flow(self, username: str, password: str, report_name: str) -> Dict[str, str]:
         session_id = str(uuid.uuid4())
         logger.info(f"Starting new session: {session_id}")
         
-        driver = self.setup_driver("vauto")
+        # Run synchronous setup_driver in a separate thread
+        driver = await asyncio.to_thread(self.setup_driver, ScraperType.VAUTO.value)
         SESSIONS[session_id] = driver
 
         try:
-            status = self._perform_login_actions(driver, username, password)
+            # Login action is blocking, so we await it in a thread
+            status = await asyncio.to_thread(self._perform_login_actions, driver, username, password)
+            
             if status == "OTP_NEEDED":
                 return {
                     "status": "waiting_for_otp", 
@@ -201,15 +288,23 @@ class ScrapeService:
                     "message": "2FA required. Please submit OTP."
                 }
             else:
-                self._perform_post_login_actions(driver, report_name)
-                self.close_driver_safely(session_id)
-                self.upload_latest_file_to_s3("vauto")
+                # Post login actions are also blocking
+                await asyncio.to_thread(self._perform_post_login_actions, driver, report_name)
+                
+                # Cleanup and Upload
+                await asyncio.to_thread(self.close_driver_safely, session_id)
+                await asyncio.to_thread(self.upload_latest_file_to_s3, ScraperType.VAUTO.value)
                 
                 return {"status": "success", "message": "Scrape completed successfully (No 2FA needed)."}
+        except (TimeoutException, NoSuchElementException) as e:
+            logger.error(f"Selenium Error in start_login_flow: {type(e).__name__} - {e}")
+            await asyncio.to_thread(self.send_error_email, "start_login_flow (Selenium Error)", e)
+            await asyncio.to_thread(self.close_driver_safely, session_id)
+            raise e
         except Exception as e:
-            logger.error(f"Error in start_login_flow: {e}")
-            # self.send_error_email("start_login_flow (vAuto)", e)
-            self.close_driver_safely(session_id)
+            logger.error(f"Critical Error in start_login_flow: {e}")
+            await asyncio.to_thread(self.send_error_email, "start_login_flow (General Error)", e)
+            await asyncio.to_thread(self.close_driver_safely, session_id)
             raise e
 
     async def submit_otp_flow(self, session_id: str, otp: str, report_name: str) -> Dict[str, str]:
@@ -219,74 +314,84 @@ class ScrapeService:
         driver = SESSIONS[session_id]
         
         try:
-            logger.info("Waiting for OTP input field...")
-            otp_field = self.get_element(driver, By.ID, "input-verification-code")
-            otp_field.send_keys(otp)
-            
-            verify_btn = self.get_element(driver, By.ID, "button-account-recovery-submit")
-            if verify_btn:
-                WebDriverWait(driver, 10).until(lambda d: verify_btn.is_enabled())
-                self.click_element(driver, verify_btn)
-                logger.info("OTP submitted")
-            else:
-                logger.warning("OTP button not found")
-            
-            # # Select vAuto Product
-            try:
-                logger.info("Waiting for Product Selection...")
-                product_tile = self.get_element(driver, By.ID, "product-tile-VAT_prod", timeout=20)
-                if product_tile:
-                    self.click_element(driver, product_tile)
-                    logger.info("vAuto product selected")
+            # Wrap the blocking synchronous logic for OTP submission and post logic
+            def _otp_logic():
+                logger.info("Waiting for OTP input field...")
+                otp_field = self.get_element(driver, By.ID, "input-verification-code")
+                otp_field.send_keys(otp)
+                
+                verify_btn = self.get_element(driver, By.ID, "button-account-recovery-submit")
+                if verify_btn:
+                    WebDriverWait(driver, 10).until(lambda d: verify_btn.is_enabled())
+                    self.click_element(driver, verify_btn)
+                    logger.info("OTP submitted")
                 else:
-                    logger.warning("vAuto product tile not found")
-            except Exception as e:
-                logger.error(f"Error selecting vAuto product: {e}")
-                pass
+                    logger.warning("OTP button not found")
+                
+                # # Select vAuto Product
+                try:
+                    logger.info("Waiting for Product Selection...")
+                    product_tile = self.get_element(driver, By.ID, "product-tile-VAT_prod", timeout=20)
+                    if product_tile:
+                        self.click_element(driver, product_tile)
+                        logger.info("vAuto product selected")
+                    else:
+                        logger.warning("vAuto product tile not found")
+                except Exception as e:
+                    logger.error(f"Error selecting vAuto product: {e}")
+                    pass
 
-            self._perform_post_login_actions(driver, report_name)
-            self.close_driver_safely(session_id)
+                self._perform_post_login_actions(driver, report_name)
             
-            self.upload_latest_file_to_s3("vauto")
+            await asyncio.to_thread(_otp_logic)
+            
+            await asyncio.to_thread(self.close_driver_safely, session_id)
+            
+            await asyncio.to_thread(self.upload_latest_file_to_s3, ScraperType.VAUTO.value)
             return {"status": "success", "message": "Scrape completed successfully."}
         
+        except (TimeoutException, NoSuchElementException) as e:
+            logger.error(f"Selenium Error in submit_otp_flow: {type(e).__name__} - {e}")
+            await asyncio.to_thread(self.send_error_email, "submit_otp_flow (Selenium Error)", e)
+            await asyncio.to_thread(self.close_driver_safely, session_id)
+            raise e
         except Exception as e:
-            logger.error(f"Error in submit_otp_flow: {e}")
-            # self.send_error_email("submit_otp_flow (vAuto)", e)
-            self.close_driver_safely(session_id)
+            logger.error(f"Critical Error in submit_otp_flow: {e}")
+            await asyncio.to_thread(self.send_error_email, "submit_otp_flow (General Error)", e)
+            await asyncio.to_thread(self.close_driver_safely, session_id)
             raise e
 
     async def start_cargurus_login_flow(self, username: str, password: str) -> Dict[str, str]:
         session_id = str(uuid.uuid4())
         logger.info(f"Starting new CarGurus session: {session_id}")
         
-        driver = self.setup_driver("cargurus")
+        driver = await asyncio.to_thread(self.setup_driver, ScraperType.CARGURUS.value)
         SESSIONS[session_id] = driver
 
         try:
-            self._perform_cargurus_login_actions(driver, username, password)
-            self._perform_cargurus_post_login_actions(driver)
-            self.close_driver_safely(session_id)
-            # self.upload_latest_file_to_s3() # Uncomment if we actually download a file
-            self.upload_latest_file_to_s3("cargurus")
+            await asyncio.to_thread(self._perform_cargurus_login_actions, driver, username, password)
+            await asyncio.to_thread(self._perform_cargurus_post_login_actions, driver)
+            
+            await asyncio.to_thread(self.close_driver_safely, session_id)
+            await asyncio.to_thread(self.upload_latest_file_to_s3, ScraperType.CARGURUS.value)
             return {"status": "success", "message": "CarGurus scrape completed successfully."}
         except Exception as e:
             logger.error(f"Error in start_cargurus_login_flow: {e}")
-            # self.send_error_email("start_cargurus_login_flow", e)
-            self.close_driver_safely(session_id)
+            await asyncio.to_thread(self.close_driver_safely, session_id)
             raise e
 
 
-    async def start_drivecentric_login_flow(self, username: str, password: str, report_name: str) -> Dict[str, str]:
+    async def start_drivecentric_login_flow(self, username: str, password: str) -> Dict[str, str]:
         session_id = str(uuid.uuid4())
         logger.info(f"Starting new DriveCentric session: {session_id}")
         
-        driver = self.setup_driver("drivecentric")
+        driver = await asyncio.to_thread(self.setup_driver, ScraperType.DRIVECENTRIC.value)
         SESSIONS[session_id] = driver
-        logger.info(f"DriveCentric session started: {SESSIONS}")
+        logger.info(f"DriveCentric session started: {session_id}")
 
         try:
-            status = self._perform_drivecentric_login_actions(driver, username, password)
+            status = await asyncio.to_thread(self._perform_drivecentric_login_actions, driver, username, password)
+            
             if status == "OTP_NEEDED":
                 return {
                     "status": "waiting_for_otp", 
@@ -294,15 +399,15 @@ class ScrapeService:
                     "message": "2FA required. Please submit OTP."
                 }
             else:
-                self._perform_drivecentric_post_login_actions(driver)
-                self.close_driver_safely(session_id)
-                self.upload_latest_file_to_s3("drivecentric")
+                await asyncio.to_thread(self._perform_drivecentric_post_login_actions, driver)
+                await asyncio.to_thread(self.close_driver_safely, session_id)
+                await asyncio.to_thread(self.upload_latest_file_to_s3, ScraperType.DRIVECENTRIC.value)
                 
                 return {"status": "success", "message": "DriveCentric scrape completed successfully."}
         except Exception as e:
             logger.error(f"Error in start_drivecentric_login_flow: {e}")
-            self.send_error_email("start_drivecentric_login_flow", e)
-            self.close_driver_safely(session_id)
+            # await asyncio.to_thread(self.send_error_email, "start_drivecentric_login_flow", e)
+            await asyncio.to_thread(self.close_driver_safely, session_id)
             raise e
 
     async def submit_drivecentric_otp_flow(self, session_id: str, otp: str) -> Dict[str, str]:
@@ -312,37 +417,41 @@ class ScrapeService:
         driver = SESSIONS[session_id]
         
         try:
-            logger.info("Waiting for OTP input field...")
-            # Updated selector based on user provided HTML: id="code"
-            otp_field = self.get_element(driver, By.ID, "code") 
-            otp_field.send_keys(otp)
-            
-            # Updated submit button based on user provided HTML
-            verify_btn = self.get_element(driver, By.CSS_SELECTOR, "button[type='submit']")
-            if verify_btn:
-                self.click_element(driver, verify_btn)
-                logger.info("OTP submitted")
-            else:
-                logger.warning("OTP button not found")
-            
-            # Wait for successful login URL
-            logger.info("Waiting for redirect to sales pipeline...")
-            try:
-                WebDriverWait(driver, 30).until(EC.url_contains("/pipeline/sales"))
-                logger.info("Redirected to sales pipeline successfully.")
-            except Exception:
-                logger.warning("Timed out waiting for sales pipeline URL. Proceeding to post-login actions anyway.")
+            def _drivecentric_otp_logic():
+                logger.info("Waiting for OTP input field...")
+                # Updated selector based on user provided HTML: id="code"
+                otp_field = self.get_element(driver, By.ID, "code") 
+                otp_field.send_keys(otp)
+                
+                # Updated submit button based on user provided HTML
+                verify_btn = self.get_element(driver, By.CSS_SELECTOR, "button[type='submit']")
+                if verify_btn:
+                    self.click_element(driver, verify_btn)
+                    logger.info("OTP submitted")
+                else:
+                    logger.warning("OTP button not found")
+                
+                # Wait for successful login URL
+                logger.info("Waiting for redirect to sales pipeline...")
+                try:
+                    WebDriverWait(driver, 30).until(EC.url_contains("/pipeline/sales"))
+                    logger.info("Redirected to sales pipeline successfully.")
+                except Exception:
+                    logger.warning("Timed out waiting for sales pipeline URL. Proceeding to post-login actions anyway.")
 
-            self._perform_drivecentric_post_login_actions(driver)
-            self.close_driver_safely(session_id)
+                self._perform_drivecentric_post_login_actions(driver)
+
+            await asyncio.to_thread(_drivecentric_otp_logic)
             
-            self.upload_latest_file_to_s3("drivecentric")
+            await asyncio.to_thread(self.close_driver_safely, session_id)
+            
+            await asyncio.to_thread(self.upload_latest_file_to_s3, ScraperType.DRIVECENTRIC.value)
             return {"status": "success", "message": "DriveCentric scrape completed successfully."}
         
         except Exception as e:
             logger.error(f"Error in submit_drivecentric_otp_flow: {e}")
-            self.send_error_email("submit_drivecentric_otp_flow", e)
-            self.close_driver_safely(session_id)
+            await asyncio.to_thread(self.send_error_email, "submit_drivecentric_otp_flow", e)
+            await asyncio.to_thread(self.close_driver_safely, session_id)
             raise e
 
     # --- Internal Selenium Actions ---
@@ -496,7 +605,7 @@ class ScrapeService:
             ]
 
             downloaded_files_map = [] # List of tuples (store_name, file_path)
-            download_path = os.path.join(base_dir, "downloads", "cargurus")
+            download_path = str(BASE_DIR / "downloads" / "cargurus")
             logger.info(f"Download path: {download_path}")
             
             for store in stores:
@@ -718,7 +827,7 @@ class ScrapeService:
         logger.info("Performing DriveCentric post-login actions...")
         
         downloaded_files_map = []
-        download_path = os.path.join(base_dir, "downloads", "drivecentric")
+        download_path = str(BASE_DIR / "downloads" / "drivecentric")
         os.makedirs(download_path, exist_ok=True)
 
         try:
@@ -739,6 +848,12 @@ class ScrapeService:
                     driver.get("https://app.drivecentric.com/#/mining/deals/")
                     time.sleep(5) # Wait for page load
 
+                    if "mining/deals/" not in driver.current_url:
+                        logger.error("Failed to navigate to Mining Deals")
+                        driver.get("https://app.drivecentric.com/#/mining/deals/")
+                        logger.info("Retrying to navigate to Mining Deals...")
+                        time.sleep(5) # Wait for page load
+                        # continue
                     # 4. Apply Filters
                     self._apply_drivecentric_filters(driver)
 
@@ -767,9 +882,9 @@ class ScrapeService:
 
                 except Exception as inner_e:
                     logger.error(f"Error processing store {store}: {inner_e}")
-                    self.send_error_email(f"DriveCentric Store Loop: {store}", inner_e)
+                    # self.send_error_email(f"DriveCentric Store Loop: {store}", inner_e)
                     continue
-
+            logger.info("Downloaded files map: ", downloaded_files_map)
             # 6. Aggregate
             if downloaded_files_map:
                 all_dfs = []
@@ -798,7 +913,7 @@ class ScrapeService:
 
         except Exception as e:
             logger.error(f"Error in DriveCentric post-login actions: {e}")
-            self.send_error_email("DriveCentric post-login actions", e)
+            # self.send_error_email("DriveCentric post-login actions", e)
             raise e
 
     def _get_drivecentric_stores(self, driver):
@@ -814,21 +929,28 @@ class ScrapeService:
             logger.info("Clicking Change Stores...")
             # Look for "Change Stores" text
             change_stores_btn = self.get_element(driver, By.XPATH, "//div[contains(text(), 'Change Stores')]")
+            logger.info(f"Found change stores button: {change_stores_btn}")
             self.click_element(driver, change_stores_btn)
-            time.sleep(2)
+            time.sleep(5)
 
             # Get Store Names
             logger.info("Scraping store names...")
             store_elements = driver.find_elements(By.CSS_SELECTOR, ".store-name-label")
+            logger.info(f"Found {len(store_elements)} store elements")
             stores = [el.text.strip() for el in store_elements if el.text.strip()]
-            
+            time.sleep(5)
+            logger.info(f"Found {len(stores)} stores")
             # Close the dialog
-            close_btn = self.get_element(driver, By.CSS_SELECTOR, ".card-close")
-            if close_btn:
-                self.click_element(driver, close_btn)
-            else:
-                # If no close button, maybe click outside or escape (optional, but card-close is in HTML)
-                pass
+            try:
+                close_btn = self.get_element(driver, By.CSS_SELECTOR, ".card-close")
+                if close_btn:
+                    self.click_element(driver, close_btn)
+                # else:
+                #     # If no close button, maybe click outside or escape (optional, but card-close is in HTML)
+                #     pass
+            except Exception as e:
+                logger.error(f"Error closing dialog: {e}")
+                raise e
             
             time.sleep(1)
             return stores
@@ -848,7 +970,7 @@ class ScrapeService:
             # 2. Open Change Stores
             change_stores_btn = self.get_element(driver, By.XPATH, "//div[contains(text(), 'Change Stores')]")
             self.click_element(driver, change_stores_btn)
-            time.sleep(2)
+            time.sleep(3)
 
             # 3. Select Store
             # Find the specific store element
@@ -867,30 +989,44 @@ class ScrapeService:
         try:
             logger.info("Applying filters...")
             
-            # 1. Click "Add Filter"
-            # Selector: <span ...>Add Filter</span> inside <drc-chip>
-            add_filter_btn = self.get_element(driver, By.XPATH, "//span[contains(text(), 'Add Filter')]")
+            # # 1. Click "Add Filter"
+            # # Selector: <span ...>Add Filter</span> inside <drc-chip>
+            # add_filter_btn = self.get_element(driver, By.XPATH, "//span[contains(text(), 'Add Filter')]")
+            # self.click_element(driver, add_filter_btn)
+            # time.sleep(1)
+
+            # # 2. Select "Deal Date Created"
+            # # Selector: text inside <drc-single-selection-list-item>
+            # date_filter_opt = self.get_element(driver, By.XPATH, "//div[contains(text(), 'Deal Date Created')]")
+            # self.click_element(driver, date_filter_opt)
+            # time.sleep(1)
+
+            # # 3. Select "Yesterday"
+            # # Selector: text "Yesterday" (it's a label next to radio)
+            # yesterday_opt = self.get_element(driver, By.XPATH, "//span[contains(text(), 'Yesterday')]")
+            # self.click_element(driver, yesterday_opt)
+            # time.sleep(1)
+
+            # # 4. Click "Save"
+            # # Selector: button with text "Save" inside drc-button-popup list
+            # # The HTML shows a Save button in the footer of the popup. 
+            # # We can look for the button that specifically says "Save".
+            # save_btn = self.get_element(driver, By.XPATH, "//button//span[contains(text(), 'Save')]")
+            # self.click_element(driver, save_btn)
+
+            add_filter_btn = self.get_element(driver, By.XPATH, "//span[normalize-space()='Add Filter']",condition="clickable")
             self.click_element(driver, add_filter_btn)
             time.sleep(1)
-
-            # 2. Select "Deal Date Created"
-            # Selector: text inside <drc-single-selection-list-item>
-            date_filter_opt = self.get_element(driver, By.XPATH, "//div[contains(text(), 'Deal Date Created')]")
+            date_filter_opt = self.get_element(driver, By.XPATH, "//*[normalize-space()='Deal Date Created']",condition="clickable")
             self.click_element(driver, date_filter_opt)
             time.sleep(1)
-
-            # 3. Select "Yesterday"
-            # Selector: text "Yesterday" (it's a label next to radio)
-            yesterday_opt = self.get_element(driver, By.XPATH, "//span[contains(text(), 'Yesterday')]")
+            yesterday_opt = self.get_element(driver, By.XPATH, "//*[normalize-space()='Yesterday']",condition="clickable")
             self.click_element(driver, yesterday_opt)
             time.sleep(1)
 
-            # 4. Click "Save"
-            # Selector: button with text "Save" inside drc-button-popup list
-            # The HTML shows a Save button in the footer of the popup. 
-            # We can look for the button that specifically says "Save".
-            save_btn = self.get_element(driver, By.XPATH, "//button//span[contains(text(), 'Save')]")
+            save_btn = self.get_element(driver, By.XPATH, "//button[.//span[normalize-space()='Save']]",condition="clickable")
             self.click_element(driver, save_btn)
+
             logger.info("Filter 'Yesterday' applied.")
             time.sleep(3) # Wait for results to filter
 
@@ -898,27 +1034,61 @@ class ScrapeService:
             logger.error(f"Error applying filters: {e}")
             raise e
 
+    def wait_for_deals_loaded(self, driver, timeout=60):
+        """
+        Wait until the header counter shows something like '149,355 Deals'
+        """
+        def _cond(d):
+            el = d.find_element(By.CSS_SELECTOR, "drc-table-header .table-header__counter span")
+            text = (el.text or "").strip()
+            return bool(re.search(r"\bDeals\b", text)) and any(ch.isdigit() for ch in text)
+
+        return WebDriverWait(driver, timeout).until(_cond)
+
     def _drivecentric_download_report(self, driver):
         try:
             logger.info("Initiating download...")
-            # Click Ellipsis
-            # Select by icon name or button class. Trying both or parent button.
-            # <drc-icon name="fa-ellipsis-v"> inside button
-            ellipsis_btn = self.get_element(driver, By.CSS_SELECTOR, "drc-icon[name='fa-ellipsis-v']")
-            # We need to click the button containing this icon usually, or the icon itself might work if it bubbles
-            # Let's try finding the parent button
-            try:
-                ellipsis_btn = ellipsis_btn.find_element(By.XPATH, "./ancestor::button")
-            except:
-                pass # Try clicking icon directly if parent lookup fails
-            
-            self.click_element(driver, ellipsis_btn)
-            time.sleep(1)
-            
-            # Click Download inside the list
-            download_btn = self.get_element(driver, By.XPATH, "//button[contains(text(), 'Download')]")
+
+            # 1️ Wait until data is fully loaded (Download becomes enabled only after this)
+            self.wait_for_deals_loaded(driver, timeout=90)
+            time.sleep(2)
+            # 2️ Open ellipsis menu
+            ellipsis = self.get_element(
+                driver,
+                By.XPATH,
+                "//drc-action-list//button[.//drc-icon[@name='fa-ellipsis-v']]",
+                timeout=20,
+                condition="clickable"
+            )
+            self.click_element(driver, ellipsis)
+
+            # 3️ Ensure menu panel is visible (prevents early fetch)
+            self.get_element(
+                driver,
+                By.XPATH,
+                "//drc-action-list//div[contains(@class,'action-list__content')]",
+                timeout=10,
+                condition="visible"
+            )
+
+            # 4️ Fetch Download ONLY when it is clickable (not grey)
+            download_btn = self.get_element(
+                driver,
+                By.XPATH,
+                "//drc-action-list//div[contains(@class,'action-list__content')]"
+                "//button[contains(@class,'action-list-item') and normalize-space()='Download']",
+                timeout=30,
+                condition="clickable"
+            )
+
+            # 5️ Click using your standard click helper
             self.click_element(driver, download_btn)
-            logger.info("Clicked Download.")
-        except Exception as e:
-            logger.error(f"Download failed: {e}")
-            raise e    
+            logger.info("Clicked Download (enabled).")
+
+        except Exception:
+            logger.exception("Download failed")
+            raise
+
+
+
+

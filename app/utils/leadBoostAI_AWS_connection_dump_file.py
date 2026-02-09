@@ -14,6 +14,7 @@ import time
 load_dotenv()
 ATHENA_VAUTO_TABLE = os.getenv("ATHENA_VAUTO_TABLE")
 ATHENA_CARGURU_TABLE = os.getenv("ATHENA_CARGURU_TABLE")
+ATHENA_DRIVECENTRIC_TABLE = os.getenv("ATHENA_DRIVECENTRIC_TABLE")
 aws_access_key = os.getenv("AWS_ACCESS_KEY")
 aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
 region_name = "us-east-2"
@@ -89,6 +90,43 @@ def athena_table_exists(database, table_name, athena_output):
 
     logger.info(f"SHOW TABLES returned: {table_names}")
     return table_name in table_names
+
+
+def create_athena_drivecentric_table_if_not_exists(
+    database, table_name, bucket, project_name, athena_output
+):
+    query = f"""
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table_name} (
+        customer string,
+        store_name string,
+        vehicle_1_stock_number string,
+        vehicle_1_year_make_model_trim string,
+        deal_date_created timestamp,
+        current_stage string,
+        next_task timestamp,
+        deal_sales_1 string,
+        deal_bdc string,
+        phone_count int,
+        text_count int,
+        email_count int,
+        video_count int
+    )
+    PARTITIONED BY (
+        year string,
+        month string,
+        day string,
+        platform_name string
+    )
+    STORED AS PARQUET
+    LOCATION 's3://{bucket}/{project_name}/'
+
+    """
+    #     TBLPROPERTIES (
+    # 'parquet.compression'='SNAPPY'
+    # )
+    execution_id = run_athena_query(query, database, athena_output)
+    wait_for_query(execution_id)
+    print(f"🆕 Athena table ensured: {table_name}")
 
 
 def create_athena_carguru_table_if_not_exists(
@@ -369,7 +407,22 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
     elif webpage == "drivecentric":
         platform = "drive_centric"
         filename = "versionauction_drive_centric_inventory_records"
-    
+        # Normalize column names if needed
+        df.columns = df.columns.str.strip()
+
+        # Convert to real timestamps (your format looks like: 02-05-2026 23:43)
+        for col in ["deal_date_created", "next_task"]:
+            if col in df.columns:
+                df[col] = pd.to_datetime(
+                    df[col].astype(str).str.strip().replace({"": None, "nan": None, "None": None}),
+                    format="%m-%d-%Y %H:%M",
+                    errors="coerce",
+                )
+
+        # Optional: log dtypes to confirm
+        logger.info(f"dtypes before parquet:\n{df.dtypes}")
+
+
     s3_key = (
         f"{project_name}/"
         f"year={year}/month={month}/day={day}/platform_name={platform}/"
@@ -425,6 +478,14 @@ def upload_df_to_s3_parquet(df: pd.DataFrame,bucket: str,project_name: str,datab
         if not athena_table_exists(database, table_name, athena_output):
             logger.info(f"Creating Athena table: {table_name}")
             create_athena_vauto_table_if_not_exists(database, table_name, bucket, project_name, athena_output)
+    elif table_name == ATHENA_DRIVECENTRIC_TABLE:
+        # if athena_table_exists(database, table_name, athena_output):
+        #     logger.info(f"Dropping Athena table: {table_name}")
+        #     drop_athena_table(database, table_name, athena_output)
+
+        if not athena_table_exists(database, table_name, athena_output):
+            logger.info(f"Creating Athena table: {table_name}")
+            create_athena_drivecentric_table_if_not_exists(database, table_name, bucket, project_name, athena_output)        
     # Update Athena partitions
     try:
         logger.info(f"Repairing Athena partitions for table: {table_name}")

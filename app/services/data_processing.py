@@ -10,7 +10,26 @@ from utils.leadBoostAI_AWS_connection_dump_file import upload_df_to_s3_parquet
 load_dotenv()
 
 # Constants
-NECESSARY_RENAME_MAP_DRIVECENTRIC = {}
+NECESSARY_RENAME_MAP_DRIVECENTRIC = {
+    "Customer": "customer",
+    "Store": "store_name",
+    "Vehicle 1 Stock Number": "vehicle_1_stock_number",
+    "Vehicle 1 Year Make Model Trim": "vehicle_1_year_make_model_trim",
+    "Deal Date Created": "deal_date_created",
+    "Current Stage": "current_stage",
+    "Next Task": "next_task",
+    "Deal Sales 1": "deal_sales_1",
+    "Deal BDC": "deal_bdc",
+    "Phone Count": "phone_count",
+    "Text Count": "text_count",
+    "Email Count": "email_count",
+    "Video Count": "video_count",
+    # If these exist in your excel, I'd drop them (since they are partitions)
+    "year": "year",
+    "month": "month",
+    "day": "day",
+    "store": "store"  # optional; usually redundant with Store
+}
 NECESSARY_RENAME_MAP = {}
 NECESSARY_RENAME_MAP_VAUTO = {
     "Photo Thumbnail": "photo_thumbnail",
@@ -239,6 +258,7 @@ class DataProcessor:
         
         elif webpage == "drivecentric":
             df = df.rename(columns=NECESSARY_RENAME_MAP_DRIVECENTRIC)
+            df.columns = df.columns.str.lower()
         
         else:
             df = df.rename(columns=NECESSARY_RENAME_MAP)
