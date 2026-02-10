@@ -488,38 +488,179 @@ class ScrapeService:
             # logger.info("2FA screen not found or timed out. Assuming already logged in.")
             # return "LOGGED_IN"
 
+    def _select_vauto_store(self, driver, store_name):
+        logger.info(f"Attempting to switch to store: {store_name}")
+        try:
+            # 1. Open Store Selector
+            # Try clicking the entity select anchor
+            store_selector = self.get_element(driver, By.ID, "m__ctrl_0_CurrentEntityDialog_entitySelectAnchor", timeout=10)
+            if not store_selector:
+                 logger.warning("Store selector anchor not found")
+                 return False
+            
+            self.click_element(driver, store_selector)
+            
+            # 2. Wait for Modal and Search Field
+            search_field = self.get_element(driver, By.ID, "entitySearchField", timeout=10, condition="visible")
+            if not search_field:
+                logger.error("Store search field not found")
+                return False
+                
+            # 3. Search for the store
+            search_field.clear()
+            search_field.send_keys(store_name)
+            time.sleep(2) # Wait for search results
+            
+            # 4. Click specific store
+            # The HTML shows results like: <h3><a ...>Store Name</a></h3>
+            store_xpath = f"//div[contains(@class, 'entity-search-item')]//h3/a[normalize-space(text())='{store_name}']"
+            store_link = self.get_element(driver, By.XPATH, store_xpath, timeout=10)
+            
+            if store_link:
+                self.click_element(driver, store_link)
+                logger.info(f"Clicked store: {store_name}")
+                
+                # Wait for the modal to close or the page to reload. 
+                # Checking if the selector text changes might be a good verification, 
+                # but a sleep + navigation to inventory usually suffices as the platform persists the selection.
+                time.sleep(5) 
+                return True
+            else:
+                logger.error(f"Store '{store_name}' not found in search results")
+                # Try closing the modal if selection failed
+                try:
+                    cancel_btn = self.get_element(driver, By.XPATH, "//button[text()='Cancel']")
+                    if cancel_btn:
+                        self.click_element(driver, cancel_btn)
+                except:
+                    pass
+                return False
+
+        except Exception as e:
+            logger.error(f"Error switching to store {store_name}: {e}")
+            return False
+
     def _perform_post_login_actions(self, driver, report_name):
-        logger.info("Navigating to Inventory page...")
-        time.sleep(5)
-        driver.get("https://provision.vauto.app.coxautoinc.com/Va/Inventory/")
-        
-        logger.info("Waiting for 'Reports/Customize' button...")
-        reports_btn = self.get_element(driver, By.XPATH, "//button[contains(text(), 'Reports/Customize')]")
-        if reports_btn:
-            self.click_element(driver, reports_btn)
-            logger.info("'Reports/Customize' clicked")
-        else:
-            logger.warning("'Reports/Customize' button not found")    
+        stores = [
+            "Palm Beach Mitsubishi",
+            "Taverna CDJR",
+            "Taverna INFINITI North Miami"
+        ]
 
-        logger.info(f"Selecting Report: {report_name}...")
-        report_item = self.get_element(driver, By.XPATH, f"//span[contains(text(), '{report_name}')]")
-        if report_item:
-            self.click_element(driver, report_item)
-            logger.info("Report selected")
-        else:
-            logger.warning(f"Report '{report_name}' not found") 
+        download_path = str(BASE_DIR / "downloads" / "vauto")
+        downloaded_files_map = [] # List of tuples (store_name, file_path)
+        
+        # Ensure download path exists/is clean if needed. 
+        # (Already handled in setup, but good to know location)
 
-        time.sleep(4)   
-        
-        logger.info("Downloading Excel...")
-        excel_btn = self.get_element(driver, By.XPATH, "//span[text()='Excel']")
-        if excel_btn:    
-            self.click_element(driver, excel_btn)  
+        for store in stores:
+            logger.info(f"Processing store: {store}")
+            
+            # 1. Switch Store
+            if not self._select_vauto_store(driver, store):
+                logger.warning(f"Skipping report for {store} due to selection failure.")
+                continue
+
+            # 2. Navigate to Inventory (ensures we are on the right page after switch)
+            try:
+                logger.info("Navigating to Inventory page...")
+                driver.get("https://provision.vauto.app.coxautoinc.com/Va/Inventory/")
+                time.sleep(5)
+                
+                # 3. Open Reports
+                logger.info("Waiting for 'Reports/Customize' button...")
+                reports_btn = self.get_element(driver, By.XPATH, "//button[contains(text(), 'Reports/Customize')]")
+                if reports_btn:
+                    self.click_element(driver, reports_btn)
+                    logger.info("'Reports/Customize' clicked")
+                else:
+                    logger.warning("'Reports/Customize' button not found")
+                    continue
+
+                # 4. Select Report
+                logger.info(f"Selecting Report: {report_name}...")
+                report_item = self.get_element(driver, By.XPATH, f"//span[contains(text(), '{report_name}')]")
+                if report_item:
+                    self.click_element(driver, report_item)
+                    logger.info("Report selected")
+                else:
+                    logger.warning(f"Report '{report_name}' not found")
+                    continue # Skip if report not found
+
+                time.sleep(4)   
+                
+                # 5. Download Excel
+                # Capture files before download to identify the new one
+                before_files = set(glob.glob(os.path.join(download_path, "*")))
+                
+                logger.info("Downloading Excel...")
+                excel_btn = self.get_element(driver, By.XPATH, "//span[text()='Excel']")
+                if excel_btn:    
+                    self.click_element(driver, excel_btn)
+                    logger.info("Excel download initiated")
+                    
+                    # Wait for download
+                    timeout = 60
+                    end_time = time.time() + timeout
+                    new_file = None
+                    while time.time() < end_time:
+                        current_files = set(glob.glob(os.path.join(download_path, "*")))
+                        new_files = current_files - before_files
+                        # Filter out crdownload/tmp
+                        valid_new_files = [f for f in new_files if not f.endswith('.crdownload') and not f.endswith('.tmp')]
+                        
+                        if valid_new_files:
+                            new_file = valid_new_files[0]
+                            break
+                        time.sleep(1)
+                    
+                    if new_file:
+                        logger.info(f"File downloaded for {store}: {new_file}")
+                        downloaded_files_map.append((store, new_file))
+                    else:
+                        logger.warning(f"Timeout waiting for file download for {store}")
+                else:
+                    logger.warning("Excel button not found")    
+            
+            except Exception as e:
+                logger.error(f"Error processing store {store}: {e}")
+                continue
+
+        # 6. Aggregate Files
+        logger.info("All stores processed. Starting aggregation...")
+        if downloaded_files_map:
+            try:
+                all_dfs = []
+                for store_name, file_path in downloaded_files_map:
+                    try:
+                        # Assuming vAuto reports are Excel or CSV
+                        if file_path.endswith('.csv'):
+                            df = pd.read_csv(file_path)
+                        else:
+                            df = pd.read_excel(file_path) # Might need engine='openpyxl' or 'xlrd' depending on format
+                        
+                        df['store'] = store_name
+                        all_dfs.append(df)
+                    except Exception as e:
+                        logger.error(f"Error reading file {file_path}: {e}")
+                
+                if all_dfs:
+                    final_df = pd.concat(all_dfs, ignore_index=True)
+                    timestamp = datetime.now().strftime("%m.%d.%Y__%H-%M-%S")
+                    combined_filename = f"vAuto_Aggregated__{timestamp}.xlsx"
+                    combined_path = os.path.join(download_path, combined_filename)
+                    
+                    final_df.to_excel(combined_path, index=False)
+                    logger.info(f"Aggregated file saved to: {combined_path}")
+                    
+                    # Optional: Clean up individual files? 
+                    # Keeping them for now might be safer for debugging.
+                else:
+                    logger.warning("No dataframes to aggregate.")
+            except Exception as e:
+                logger.error(f"Error during aggregation: {e}")
         else:
-            logger.warning("Excel button not found")    
-        
-        logger.info("Excel download initiated")
-        time.sleep(10)
+            logger.warning("No files downloaded to aggregate.")
 
     def _perform_cargurus_login_actions(self, driver, username, password):
         # Using the URL provided by the user

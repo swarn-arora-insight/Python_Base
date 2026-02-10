@@ -255,7 +255,7 @@ class DataProcessor:
 
         elif webpage == "vauto":
             df = df.rename(columns=NECESSARY_RENAME_MAP_VAUTO)
-            df["store"] = "Taverna INFINITI North Miami - MP6497"
+            # df["store"] = "Taverna INFINITI North Miami - MP6497"
         
         elif webpage == "drivecentric":
             df = df.rename(columns=NECESSARY_RENAME_MAP_DRIVECENTRIC)
