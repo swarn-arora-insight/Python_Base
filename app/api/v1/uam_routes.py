@@ -9,6 +9,7 @@ from typing import List
 from models.constants import UserMessages
 from services.user_service import UserService
 from repositories.user_repo import UserRepository
+from core.logging import logger
 
 
 router = APIRouter()
@@ -23,7 +24,9 @@ async def user_permission_tabs(
     db: AsyncSession = Depends(get_db),
 ):
     """Return the list of accessible UI tabs for an authenticated user."""
+    logger.info("Fetching user permission tabs")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -35,6 +38,7 @@ async def user_permission_tabs(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -70,7 +74,9 @@ async def list_of_organizations(
     db: AsyncSession = Depends(get_db),
 ):
     """Fetch all organizations accessible to an authenticated user."""
+    logger.info(f"Fetching list of organizations with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -82,6 +88,7 @@ async def list_of_organizations(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -109,7 +116,9 @@ async def create_organizations(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new organization."""
+    logger.info(f"Creating organization with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -120,7 +129,8 @@ async def create_organizations(
 
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
-    if len(token_data) == 0:
+    if len(token_data) == 0:    
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -134,6 +144,7 @@ async def create_organizations(
     code, message = await uam_service.check_org_name(org_name)
 
     if code != 200:
+        logger.info("Invalid organization name")
         return {
             "header": {
                 "code": code,
@@ -146,6 +157,7 @@ async def create_organizations(
 
     fetch_org = await uam_repo.get_org_by_key({"org_name": org_name})
     if len(fetch_org) > 0:
+        logger.info("Organization name already exists")
         return {
             "header": {
                 "code": 400,
@@ -156,6 +168,7 @@ async def create_organizations(
 
     orgs = await uam_repo.get_all_orgs()
     if not orgs:
+        logger.info("No organizations found")
         next_org_id = "ORG00001"
     else:
         last_number = max(int(org["org_id"][3:]) for org in orgs)
@@ -170,6 +183,7 @@ async def create_organizations(
 
     code, org_entry_message = await uam_repo.org_entry(payload)
     if code != 200:
+        logger.info("Organization entry failed")
         return {
             "header": {
                 "code": code,
@@ -178,6 +192,7 @@ async def create_organizations(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "createorg", payload)
+    logger.info(f"Organization created successfully: {org_name}")
     return {
         "header": {
             "code": 200,
@@ -194,7 +209,9 @@ async def edit_organizations(
     db: AsyncSession = Depends(get_db),
 ):
     """Edit organization detail."""
+    logger.info(f"Editing organization with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -206,6 +223,7 @@ async def edit_organizations(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -220,6 +238,7 @@ async def edit_organizations(
     uam_repo = UAMRepository(db)
     orgs = await uam_repo.get_org_by_key({"org_id": org_id})
     if len(orgs) == 0:
+        logger.info("Invalid organization details")
         return {
             "header": {
                 "code": 400,
@@ -237,6 +256,7 @@ async def edit_organizations(
 
     code, org_entry_message = await uam_repo.org_entry(payload)
     if code != 200:
+        logger.info("Organization entry failed")
         return {
             "header": {
                 "code": code,
@@ -245,6 +265,7 @@ async def edit_organizations(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "editorg", payload)
+    logger.info(f"Organization edited successfully: {org_name}")
     return {
         "header": {
             "code": 200,
@@ -261,7 +282,9 @@ async def delete_organizations(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete organization detail."""
+    logger.info(f"Deleting organization with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -273,6 +296,7 @@ async def delete_organizations(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -285,6 +309,7 @@ async def delete_organizations(
     uam_repo = UAMRepository(db)
     orgs = await uam_repo.get_org_by_key({"org_id": org_id})
     if len(orgs) == 0:
+        logger.info("Invalid organization details")
         return {
             "header": {
                 "code": 400,
@@ -299,6 +324,7 @@ async def delete_organizations(
     }
     code, org_delete_message = await uam_repo.org_delete(payload)
     if code != 200:
+        logger.info("Organization delete failed")
         return {
             "header": {
                 "code": code,
@@ -306,7 +332,9 @@ async def delete_organizations(
             },
             "response": {},
         }
+
     UserService.update_uam_log(token_data[0]["user_id"], "deleteorg", payload)
+    logger.info(f"Organization deleted successfully: {org_id}")
     return {
         "header": {
             "code": 200,
@@ -323,7 +351,9 @@ async def get_roles(
     db: AsyncSession = Depends(get_db),
 ):
     """Fetch all roles."""
+    logger.info(f"Fetching all roles with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -335,6 +365,7 @@ async def get_roles(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -362,7 +393,9 @@ async def create_role(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new role."""
+    logger.info(f"Creating role with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -374,6 +407,7 @@ async def create_role(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -387,6 +421,7 @@ async def create_role(
     code, message = await uam_service.check_role_name(role_name)
 
     if code != 200:
+        logger.info("Invalid role name")
         return {
             "header": {
                 "code": code,
@@ -399,6 +434,7 @@ async def create_role(
 
     fetch_role = await uam_repo.get_role_by_key({"role_name": role_name})
     if len(fetch_role) > 0:
+        logger.info("Role name already exists")
         return {
             "header": {
                 "code": 400,
@@ -423,6 +459,7 @@ async def create_role(
 
     code, role_entry_message = await uam_repo.role_entry(payload)
     if code != 200:
+        logger.info("Role entry failed")
         return {
             "header": {
                 "code": code,
@@ -431,6 +468,7 @@ async def create_role(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "createrole", payload)
+    logger.info(f"Role created successfully: {role_name}")
     return {
         "header": {
             "code": 200,
@@ -447,7 +485,9 @@ async def edit_role(
     db: AsyncSession = Depends(get_db),
 ):
     """Edit a role."""
+    logger.info(f"Editing role with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -459,6 +499,7 @@ async def edit_role(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -472,6 +513,7 @@ async def edit_role(
     code, message = await uam_service.check_role_name(role_name)
 
     if code != 200:
+        logger.info("Invalid role name")
         return {
             "header": {
                 "code": code,
@@ -484,6 +526,7 @@ async def edit_role(
 
     fetch_role = await uam_repo.get_role_by_key({"role_id": payload.role_id})
     if len(fetch_role) == 0:
+        logger.info("Role not found")
         return {
             "header": {
                 "code": 400,
@@ -501,6 +544,7 @@ async def edit_role(
 
     code, role_entry_message = await uam_repo.role_entry(payload)
     if code != 200:
+        logger.info("Role entry failed")
         return {
             "header": {
                 "code": code,
@@ -509,6 +553,7 @@ async def edit_role(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "editrole", payload)
+    logger.info(f"Role edited successfully: {role_name}")
     return {
         "header": {
             "code": 200,
@@ -526,7 +571,9 @@ async def get_list_of_features_in_feature_group(
     db: AsyncSession = Depends(get_db),
 ):
     """Return all features."""
+    logger.info(f"Fetching features with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -538,6 +585,7 @@ async def get_list_of_features_in_feature_group(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -549,6 +597,7 @@ async def get_list_of_features_in_feature_group(
     uam_repo = UAMRepository(db)
     features = await uam_repo.feature_list()
     if len(features) == 0:
+        logger.info("No features found")
         return {
             "header": {
                 "code": 400,
@@ -574,7 +623,9 @@ async def create_feature_group(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new feature group."""
+    logger.info(f"Creating feature group with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -586,6 +637,7 @@ async def create_feature_group(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -599,6 +651,7 @@ async def create_feature_group(
     code, message = await uam_service.validate_feature_name(feature_grp_name)
 
     if code != 200:
+        logger.info("Invalid feature group name")
         return {
             "header": {
                 "code": code,
@@ -613,6 +666,7 @@ async def create_feature_group(
         {"feature_grp_name": feature_grp_name}
     )
     if len(fetch_feature_group) > 0:
+        logger.info("Feature group name already exists")
         return {
             "header": {
                 "code": 400,
@@ -639,6 +693,7 @@ async def create_feature_group(
 
     code, feature_group_entry_message = await uam_repo.feature_group_entry(payload)
     if code != 200:
+        logger.info("Feature group entry failed")
         return {
             "header": {
                 "code": code,
@@ -647,6 +702,7 @@ async def create_feature_group(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "createfeaturegroup", payload)
+    logger.info(f"Feature group created successfully: {feature_grp_name}")
     return {
         "header": {
             "code": 200,
@@ -663,7 +719,9 @@ async def create_feature(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new feature."""
+    logger.info(f"Creating feature with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -675,6 +733,7 @@ async def create_feature(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -689,6 +748,7 @@ async def create_feature(
     code, message = await uam_service.validate_feature_name(feature_name)
 
     if code != 200:
+        logger.info("Invalid feature name")
         return {
             "header": {
                 "code": code,
@@ -703,6 +763,7 @@ async def create_feature(
         {"feature_grp_id": feature_grp_id}
     )
     if len(fetch_feature_group) == 0:
+        logger.info("Feature group not found")
         return {
             "header": {
                 "code": 400,
@@ -715,6 +776,7 @@ async def create_feature(
         {"feature_name": feature_name}
     )
     if len(get_feature_by_key) > 0:
+        logger.info("Feature name already exists")
         return {
             "header": {
                 "code": 400,
@@ -740,6 +802,7 @@ async def create_feature(
 
     code, feature_entry_message = await uam_repo.feature_entry(payload)
     if code != 200:
+        logger.info("Feature entry failed")
         return {
             "header": {
                 "code": code,
@@ -749,6 +812,7 @@ async def create_feature(
         }
 
     UserService.update_uam_log(token_data[0]["user_id"], "createfeature", payload)
+    logger.info(f"Feature created successfully: {feature_name}")
     return {
         "header": {
             "code": 200,
@@ -765,7 +829,9 @@ async def delete_feature(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a feature."""
+    logger.info(f"Deleting feature with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -777,6 +843,7 @@ async def delete_feature(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -790,6 +857,7 @@ async def delete_feature(
 
     feature_assigned_to_role = await uam_repo.get_feature_assigned_to_role(feature_id)
     if len(feature_assigned_to_role) > 0:
+        logger.info("Feature can't be deleted as it is assigned to role.")
         return {
             "header": {
                 "code": 400,
@@ -804,6 +872,7 @@ async def delete_feature(
     }
     code, feature_delete_message = await uam_repo.feature_group_entry(payload)
     if code != 200:
+        logger.info("Feature delete failed")
         return {
             "header": {
                 "code": code,
@@ -813,6 +882,7 @@ async def delete_feature(
         }
 
     UserService.update_uam_log(token_data[0]["user_id"], "deletefeature", payload)
+    logger.info(f"Feature deleted successfully: {feature_id}")
     return {
         "header": {
             "code": 200,
@@ -829,7 +899,9 @@ async def feature_role_list(
     db: AsyncSession = Depends(get_db),
 ):
     """Fetch all features accessible to an authenticated user."""
+    logger.info(f"Fetching feature role list with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -841,6 +913,7 @@ async def feature_role_list(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -870,7 +943,9 @@ async def assign_feature_to_role(
     db: AsyncSession = Depends(get_db),
 ):
     """Assign features to a role."""
+    logger.info(f"Assigning feature to role with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -882,6 +957,7 @@ async def assign_feature_to_role(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -897,6 +973,7 @@ async def assign_feature_to_role(
     uam_service = UAMRepository(db)
     role_feature_mapping = await uam_service.feature_role_mapping(role_id, feature_id)
     if len(role_feature_mapping) > 0:
+        logger.info("Feature already assigned to role.")
         return {
             "header": {
                 "code": 400,
@@ -907,6 +984,7 @@ async def assign_feature_to_role(
 
     role_id_list = await uam_service.get_role_feature_mapping(role_id)
     if len(role_id_list) == 0:
+        logger.info("Role not found.")
         return {
             "header": {
                 "code": 400,
@@ -917,6 +995,7 @@ async def assign_feature_to_role(
 
     role_id_list = await uam_service.get_feature_by_key({"feature_id": feature_id})
     if len(role_id_list) == 0:
+        logger.info("Feature not found.")
         return {
             "header": {
                 "code": 400,
@@ -926,6 +1005,7 @@ async def assign_feature_to_role(
         }
 
     if str(permission_level) not in ["1", "2", "3", "4"]:
+        logger.info("Invalid permission level.")
         return {
             "header": {
                 "code": 400,
@@ -944,6 +1024,7 @@ async def assign_feature_to_role(
 
     code, role_feature_mapping = await uam_service.create_feature_role_mapping(payload)
     if code != 200:
+        logger.info("Feature assignment failed")
         return {
             "header": {
                 "code": code,
@@ -953,6 +1034,7 @@ async def assign_feature_to_role(
         }
     
     UserService.update_uam_log(token_data[0]["user_id"], "assignfeaturetorole", payload)
+    logger.info(f"Feature assigned to role successfully. Role: {role_id}, Feature: {feature_id} ,updated_by: {token_data[0]["user_id"]}")
     return {
         "header": {
             "code": 200,
@@ -969,7 +1051,9 @@ async def edit_access_level_of_feature_which_is_assigned_to_role(
     db: AsyncSession = Depends(get_db),
 ):
     """Edit features to a role."""
+    logger.info(f"Editing feature role assignment with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -981,6 +1065,7 @@ async def edit_access_level_of_feature_which_is_assigned_to_role(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -996,6 +1081,7 @@ async def edit_access_level_of_feature_which_is_assigned_to_role(
     uam_service = UAMRepository(db)
     role_feature_mapping = await uam_service.feature_role_mapping(role_id, feature_id)
     if len(role_feature_mapping) != 1:
+        logger.info("Invalid detail found.")
         return {
             "header": {
                 "code": 400,
@@ -1005,6 +1091,7 @@ async def edit_access_level_of_feature_which_is_assigned_to_role(
         }
 
     if str(permission_level) not in ["1", "2", "3", "4"]:
+        logger.info("Invalid permission level.")
         return {
             "header": {
                 "code": 400,
@@ -1023,6 +1110,7 @@ async def edit_access_level_of_feature_which_is_assigned_to_role(
 
     code, role_feature_mapping = await uam_service.create_feature_role_mapping(payload)
     if code != 200:
+        logger.info("Feature role assignment edited failed.")
         return {
             "header": {
                 "code": code,
@@ -1031,6 +1119,7 @@ async def edit_access_level_of_feature_which_is_assigned_to_role(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "editfeaturerole", payload)
+    logger.info(f"Feature role assignment edited successfully. Role: {role_id}, Feature: {feature_id},updated_by: {token_data[0]["user_id"]}")
     return {
         "header": {
             "code": 200,
@@ -1047,7 +1136,9 @@ async def delete_feature_from_role(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete features of a role."""
+    logger.info(f"Deleting feature from role with payload: {payload}")
     if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -1059,6 +1150,7 @@ async def delete_feature_from_role(
     service = UserRepository(db)
     token_data = await service.get_token_data(payload.token)
     if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
         return {
             "header": {
                 "code": 400,
@@ -1073,6 +1165,7 @@ async def delete_feature_from_role(
     uam_service = UAMRepository(db)
     role_feature_mapping = await uam_service.feature_role_mapping(role_id, feature_id)
     if len(role_feature_mapping) != 1:
+        logger.info("Invalid detail found.")
         return {
             "header": {
                 "code": 400,
@@ -1090,6 +1183,7 @@ async def delete_feature_from_role(
 
     code, role_feature_mapping = await uam_service.create_feature_role_mapping(payload)
     if code != 200:
+        logger.info("Feature role assignment deleted failed.")
         return {
             "header": {
                 "code": code,
@@ -1099,6 +1193,7 @@ async def delete_feature_from_role(
         }
 
     UserService.update_uam_log(token_data[0]["user_id"], "deletefeaturerole", payload)
+    logger.info(f"Feature deleted from role successfully. Role: {role_id}, Feature: {feature_id},updated_by: {token_data[0]["user_id"]}")
     return {
         "header": {
             "code": 200,
