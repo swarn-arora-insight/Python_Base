@@ -4,7 +4,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Depends
 from schemas.scrape import StartScrapeRequest, OtpRequest,otpDrivecentricRequest, otpVautoRequest
 from services.scrape_service import ScrapeService
-from services.user_service import UserService
+# from services.user_service import UserService
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,7 +17,6 @@ def get_scrape_service():
 async def start_scrape(
     # request: StartScrapeRequest, 
     service: ScrapeService = Depends(get_scrape_service),
-    user_info: dict = Depends(UserService.authenticate_token)
 ):
     username = os.getenv("VAUTO_USERNAME")
     password = os.getenv("VAUTO_PASSWORD")
@@ -36,7 +35,6 @@ async def start_scrape(
 async def start_cargurus_scrape(
     # request: StartScrapeRequest,
     service: ScrapeService = Depends(get_scrape_service),
-    user_info: dict = Depends(UserService.authenticate_token)
 ):
     username = os.getenv("CARGURUS_USERNAME")
     password = os.getenv("CARGURUS_PASSWORD")
@@ -54,7 +52,6 @@ async def start_cargurus_scrape(
 async def submit_otp(
     request: otpVautoRequest, 
     service: ScrapeService = Depends(get_scrape_service),
-    user_info: dict = Depends(UserService.authenticate_token)
 ):
     try:
         await asyncio.to_thread(service.update_vauto_otp_file, request.otp)
@@ -68,7 +65,6 @@ async def submit_otp(
 async def start_drivecentric_scrape(
     # request: StartScrapeRequest, 
     service: ScrapeService = Depends(get_scrape_service),
-    user_info: dict = Depends(UserService.authenticate_token)
 ):
     username = str(os.getenv("DRIVECENTRIC_USERNAME"))
     password = str(os.getenv("DRIVECENTRIC_PASSWORD"))
@@ -86,10 +82,8 @@ async def start_drivecentric_scrape(
 async def submit_drivecentric_otp(
     request: otpDrivecentricRequest, 
     service: ScrapeService = Depends(get_scrape_service),
-    user_info: dict = Depends(UserService.authenticate_token)
 ):
     try:
-        # result = await service.submit_drivecentric_otp_flow(request.session_id, request.otp)
         await asyncio.to_thread(service.update_drivecentric_otp_file, request.otp)
         return {"status": "success", "message": "OTP submitted successfully."}
     except ValueError as ve:
