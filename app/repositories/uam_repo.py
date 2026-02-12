@@ -14,17 +14,27 @@ class UAMRepository:
         self.db = db
 
     # Organization
-    async def get_all_orgs(self) -> list:
+    async def get_all_orgs(self, payload: dict) -> list:
         """Retrieves a list of all active organizations with their IDs and names."""
         logger.info("Fetching all active organizations")
-        result = await self.db.execute(
-            select(Organization.org_id, Organization.org_name)
-            .where(Organization.is_active == 1)
-            .order_by(Organization.id.asc())
-        )
-        return [
-            {"org_id": row.org_id, "org_name": row.org_name} for row in result.all()
-        ]
+        action = payload.get("action", "info")
+        if action == "info":
+            result = await self.db.execute(
+                select(Organization.org_id, Organization.org_name)
+                .where(Organization.is_active == 1)
+                .order_by(Organization.id.asc())
+            )
+            return [
+                {"org_id": row.org_id, "org_name": row.org_name} for row in result.all()
+            ]
+        elif action == "create":    
+            result = await self.db.execute(
+                select(Organization.org_id, Organization.org_name)
+                .order_by(Organization.id.asc())
+            )
+            return [
+                {"org_id": row.org_id, "org_name": row.org_name} for row in result.all()
+            ]
 
     async def get_org_by_key(self, payload: dict) -> Optional[Organization]:
         """Fetches an organization based on the provided organization name or ID."""

@@ -32,3 +32,4 @@ app/core/config.py
 
 # macOS
 .DS_Store
+testcmp

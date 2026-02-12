@@ -98,7 +98,8 @@ async def list_of_organizations(
         }
 
     uam_service = UAMRepository(db)
-    org_details = await uam_service.get_all_orgs()
+    payload = {"action": "info"}
+    org_details = await uam_service.get_all_orgs(payload)
 
     return {
         "header": {
@@ -165,8 +166,8 @@ async def create_organizations(
             },
             "response": {},
         }
-
-    orgs = await uam_repo.get_all_orgs()
+    payload = {"action": "create"}
+    orgs = await uam_repo.get_all_orgs(payload)
     if not orgs:
         logger.info("No organizations found")
         next_org_id = "ORG00001"
@@ -1034,7 +1035,7 @@ async def assign_feature_to_role(
         }
     
     UserService.update_uam_log(token_data[0]["user_id"], "assignfeaturetorole", payload)
-    logger.info(f"Feature assigned to role successfully. Role: {role_id}, Feature: {feature_id} ,updated_by: {token_data[0]["user_id"]}")
+    logger.info(f"Feature assigned to role successfully. Role: {role_id}, Feature: {feature_id} ,updated_by: {token_data[0]['user_id']}")
     return {
         "header": {
             "code": 200,
@@ -1119,7 +1120,7 @@ async def edit_access_level_of_feature_which_is_assigned_to_role(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "editfeaturerole", payload)
-    logger.info(f"Feature role assignment edited successfully. Role: {role_id}, Feature: {feature_id},updated_by: {token_data[0]["user_id"]}")
+    logger.info(f"Feature role assignment edited successfully. Role: {role_id}, Feature: {feature_id},updated_by: {token_data[0]['user_id']}")
     return {
         "header": {
             "code": 200,
@@ -1193,7 +1194,7 @@ async def delete_feature_from_role(
         }
 
     UserService.update_uam_log(token_data[0]["user_id"], "deletefeaturerole", payload)
-    logger.info(f"Feature deleted from role successfully. Role: {role_id}, Feature: {feature_id},updated_by: {token_data[0]["user_id"]}")
+    logger.info(f"Feature deleted from role successfully. Role: {role_id}, Feature: {feature_id},updated_by: {token_data[0]['user_id']}")
     return {
         "header": {
             "code": 200,
