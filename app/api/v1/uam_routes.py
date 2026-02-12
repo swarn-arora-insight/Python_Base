@@ -10,6 +10,13 @@ from models.constants import UserMessages
 from services.user_service import UserService
 from repositories.user_repo import UserRepository
 from core.logging import logger
+from sqlalchemy.future import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
+from models.uam import Organization, Role, Feature, FeatureGroup, RoleFeature
+from models.user import User
+from typing import List, Optional
+
 
 
 router = APIRouter()
@@ -443,6 +450,15 @@ async def create_role(
             },
             "response": {},
         }
+    if str(payload.permission_level) not in ["1", "2", "3", "4"]:
+        logger.info("Invalid permission level.")
+        return {
+            "header": {
+                "code": 400,
+                "message": "Invalid permission level.",
+            },
+            "response": {},
+        }    
 
     roles = await uam_repo.get_all_roles()
     if not roles:
@@ -454,6 +470,7 @@ async def create_role(
     payload = {
         "role_name": role_name,
         "role_id": next_role_id,
+        "permission_level": payload.permission_level,
         "updated_by": token_data[0]["user_id"],
         "action": "create",
     }
@@ -564,6 +581,74 @@ async def edit_role(
     }
 
 
+@router.post("/deleterole")
+async def delete_role(
+    payload: DeleteRole,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a role."""
+    logger.info(f"Deleting role with payload: {payload}")
+    if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+
+    service = UserRepository(db)
+    token_data = await service.get_token_data(payload.token)
+    if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+
+    uam_repo = UAMRepository(db)
+    fetch_role = await uam_repo.get_role_by_key({"role_id": payload.role_id})
+    if len(fetch_role) == 0:
+        logger.info("Role not found")
+        return {
+            "header": {
+                "code": 400,
+                "message": "Role not found.",
+            },
+            "response": {},
+        }
+
+    payload = {
+        "role_id": payload.role_id,
+        "updated_by": token_data[0]["user_id"],
+    }
+
+    code, role_delete_message = await uam_repo.role_delete(payload)
+    if code != 200:
+        logger.info("Role delete failed")
+        return {
+            "header": {
+                "code": code,
+                "message": role_delete_message,
+            },
+            "response": {},
+        }
+    UserService.update_uam_log(token_data[0]["user_id"], "deleterole", payload)
+    logger.info(f"Role deleted successfully: {payload['role_id']}")
+    return {
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {},
+    }
+
+
 
 @router.post("/getfeatures")
 async def get_list_of_features_in_feature_group(
@@ -614,6 +699,67 @@ async def get_list_of_features_in_feature_group(
             "message": UserMessages.SUCCESS,
         },
         "response": features,
+    }
+
+
+@router.post("/featureassign")
+async def bulk_feature_assign(
+    payload: FeatureAssignRequest,
+    auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
+    """Assign multiple features to roles."""
+    logger.info(f"Assigning features with payload: {payload}")
+    if len(auth_payload) == 0:
+        logger.info("auth_payload is empty Invalid credentials")
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+
+    service = UserRepository(db)
+    token_data = await service.get_token_data(payload.token)
+    if len(token_data) == 0:
+        logger.info("token not found Invalid credentials")
+        return {
+            "header": {
+                "code": 400,
+                "message": UserMessages.INVALID_CREDENTIALS,
+            },
+            "response": {},
+        }
+
+    uam_repo = UAMRepository(db)
+    
+    # Prepare payload for repository
+    repo_payload = {
+        "features": payload.features,
+        "updated_by": token_data[0]["user_id"]
+    }
+
+    code, message = await uam_repo.bulk_assign_features(repo_payload)
+    
+    if code != 200:
+        logger.info(f"Feature assignment failed: {message}")
+        return {
+            "header": {
+                "code": code,
+                "message": message,
+            },
+            "response": {},
+        }
+
+    UserService.update_uam_log(token_data[0]["user_id"], "featureassign", repo_payload)
+    logger.info("Features assigned successfully")
+    return {
+        "header": {
+            "code": 200,
+            "message": UserMessages.SUCCESS,
+        },
+        "response": {},
     }
 
 
@@ -937,14 +1083,14 @@ async def feature_role_list(
     }
 
 
-@router.post("/featureassign")
-async def assign_feature_to_role(
-    payload: AssignFeatureToRole,
+@router.post("/edituser")
+async def edit_user(
+    payload: EditUserRequest,
     auth_payload: dict = Depends(UserService.require_authorization),
     db: AsyncSession = Depends(get_db),
 ):
-    """Assign features to a role."""
-    logger.info(f"Assigning feature to role with payload: {payload}")
+    """Edit user details with permission checks."""
+    logger.info(f"Editing user with payload: {payload}")
     if len(auth_payload) == 0:
         logger.info("auth_payload is empty Invalid credentials")
         return {
@@ -966,76 +1112,111 @@ async def assign_feature_to_role(
             },
             "response": {},
         }
+    
+    actor_user_id = token_data[0]["user_id"]
+    uam_repo = UAMRepository(db)
 
-    role_id = payload.role_id
-    feature_id = payload.feature_id
-    permission_level = payload.permission_level
-
-    uam_service = UAMRepository(db)
-    role_feature_mapping = await uam_service.feature_role_mapping(role_id, feature_id)
-    if len(role_feature_mapping) > 0:
-        logger.info("Feature already assigned to role.")
-        return {
+    # 1. Check Actor's Permission Level
+    # Fetch actor's role to get permission level
+    actor_user_details = await service.get_user_details(actor_user_id)
+    if not actor_user_details:
+         return {
             "header": {
                 "code": 400,
-                "message": "Feature already assigned to role.",
-            },
-            "response": {},
-        }
-
-    role_id_list = await uam_service.get_role_feature_mapping(role_id)
-    if len(role_id_list) == 0:
-        logger.info("Role not found.")
-        return {
-            "header": {
-                "code": 400,
-                "message": "Role not found.",
-            },
-            "response": {},
-        }
-
-    role_id_list = await uam_service.get_feature_by_key({"feature_id": feature_id})
-    if len(role_id_list) == 0:
-        logger.info("Feature not found.")
-        return {
-            "header": {
-                "code": 400,
-                "message": "Feature not found.",
-            },
-            "response": {},
-        }
-
-    if str(permission_level) not in ["1", "2", "3", "4"]:
-        logger.info("Invalid permission level.")
-        return {
-            "header": {
-                "code": 400,
-                "message": "Invalid permission level.",
-            },
-            "response": {},
-        }
-
-    payload = {
-        "role_id": role_id,
-        "feature_id": feature_id,
-        "permission_level": permission_level,
-        "updated_by": token_data[0]["user_id"],
-        "action": "create",
-    }
-
-    code, role_feature_mapping = await uam_service.create_feature_role_mapping(payload)
-    if code != 200:
-        logger.info("Feature assignment failed")
-        return {
-            "header": {
-                "code": code,
-                "message": role_feature_mapping,
+                "message": "Actor user not found.",
             },
             "response": {},
         }
     
-    UserService.update_uam_log(token_data[0]["user_id"], "assignfeaturetorole", payload)
-    logger.info(f"Feature assigned to role successfully. Role: {role_id}, Feature: {feature_id} ,updated_by: {token_data[0]['user_id']}")
+    actor_role_id = actor_user_details.get("role_id")
+    actor_role = await uam_repo.get_role_by_key({"role_id": actor_role_id})
+    
+    # Permission Level Logic: 1=Read, 2=Write, 3=Edit, 4=Delete
+    # Actor must have at least level 3 to EDIT
+    if not actor_role:
+        return {
+            "header": {
+                "code": 403,
+                "message": "Actor role not found.",
+            },
+            "response": {},
+        }
+    
+    
+    role_stmt = select(Role).where(Role.role_id == actor_role_id)
+    role_result = await db.execute(role_stmt)
+    actor_role_obj = role_result.scalars().first()
+    
+    if not actor_role_obj or actor_role_obj.permission_level < 3:
+        logger.info(f"Insufficient permissions. User {actor_user_id} has level {actor_role_obj.permission_level if actor_role_obj else 'None'}")
+        return {
+            "header": {
+                "code": 403,
+                "message": "Insufficient permissions. You need at least Edit (Level 3) permission.",
+            },
+            "response": {},
+        }
+
+    # 2. Self-Edit Check
+    target_user_id = payload.user_id
+    if actor_user_id == target_user_id:
+        # Check if trying to change Role or Org
+        # We need current user's role and org. We already have `actor_user_details`.
+        current_role_id = actor_user_details.get("role_id")
+        current_org_id = actor_user_details.get("org_id")
+        
+        if payload.role_id != current_role_id or payload.org_id != current_org_id:
+             logger.info(f"User {actor_user_id} attempted to change their own role/org.")
+             return {
+                "header": {
+                    "code": 400,
+                    "message": "You cannot update your own Role or Organization.",
+                },
+                "response": {},
+            }
+
+    # 3. Validate Existence of New Role/Org
+    # Check Org
+    org_stmt = select(Organization).where(Organization.org_id == payload.org_id)
+    org_result = await db.execute(org_stmt)
+    if not org_result.scalars().first():
+         return {
+            "header": {
+                "code": 400,
+                "message": "Invalid Organization ID.",
+            },
+            "response": {},
+        }
+        
+    # Check Role
+    role_target_stmt = select(Role).where(Role.role_id == payload.role_id)
+    role_target_result = await db.execute(role_target_stmt)
+    if not role_target_result.scalars().first():
+         return {
+            "header": {
+                "code": 400,
+                "message": "Invalid Role ID.",
+            },
+            "response": {},
+        }
+
+    # 4. Perform Update
+    # We call uam_repo.edit_user_details
+    repo_payload = payload.dict() 
+    repo_payload["updated_by"] = actor_user_id
+    code, message = await uam_repo.edit_user_details(repo_payload)
+
+    if code != 200:
+        return {
+            "header": {
+                "code": code,
+                "message": message,
+            },
+            "response": {},
+        }
+
+    UserService.update_uam_log(actor_user_id, "edituser", repo_payload)
+    logger.info(f"User {target_user_id} edited successfully by {actor_user_id}")
     return {
         "header": {
             "code": 200,

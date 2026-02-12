@@ -150,7 +150,7 @@ class UAMRepository:
         """Retrieves all active roles along with the count and names of assigned users."""
         logger.info("Fetching all active roles")
         result = await self.db.execute(
-            select(Role.role_id, Role.role_name)
+            select(Role.role_id, Role.role_name,Role.permission_level)
             .where(Role.is_active == 1)
             .order_by(Role.id.asc())
         )
@@ -170,6 +170,7 @@ class UAMRepository:
                 {
                     "role_id": row.role_id,
                     "role_name": row.role_name,
+                    "permission_level": row.permission_level,
                     "user_count": len(users),
                     "user_names": [f"{u.first_name} {u.last_name}" for u in users],
                 }
@@ -209,6 +210,7 @@ class UAMRepository:
                 role = Role(
                     role_name=payload["role_name"],
                     role_id=payload["role_id"],
+                    permission_level=payload.get("permission_level", 1),
                     updated_by=payload["updated_by"],
                 )
                 self.db.add(role)
@@ -245,6 +247,39 @@ class UAMRepository:
                 return 200, "Success"
         except Exception as e:
             logger.error(f"Error in role_entry: {str(e)}", exc_info=True)
+            return 500, str(e)
+
+    async def role_delete(self, payload: dict) -> tuple:
+        """Soft deletes a role if no users are currently assigned to it."""
+        try:
+            logger.info(f"Attempting to delete role with payload: {payload}")
+            role = await self.db.scalar(
+                select(Role).where(Role.role_id == payload["role_id"])
+            )
+
+            if not role:
+                logger.info(f"Role not found: {payload['role_id']},attempted_by: {payload['updated_by']}")
+                return 404, "Role not found"
+
+            role_users = await self.db.execute(
+                select(User).where(
+                    User.role_id == payload["role_id"], User.is_active == 1
+                )
+            )
+            if role_users.scalars().first():
+                logger.info(f"Deletion failed: users are currently assigned to this role. ,attempted_by: {payload['updated_by']}")
+                return (
+                    400,
+                    "Deletion failed: users are currently assigned to this role.",
+                )
+
+            role.is_active = 0
+            role.updated_by = payload["updated_by"]
+            await self.db.commit()
+            logger.info(f"Role deleted successfully: {payload['role_id']},updated_by: {payload['updated_by']}")
+            return 200, "Success"
+        except Exception as e:
+            logger.error(f"Error in role_delete: {str(e)}", exc_info=True)
             return 500, str(e)
 
     # Feature
@@ -546,19 +581,8 @@ class UAMRepository:
         """Assigns or updates permission levels for a feature mapped to a role."""
         try:
             logger.info(f"Processing create_feature_role_mapping with payload: {payload}")
-            if payload["action"] == "create":
-                role_feature = RoleFeature(
-                    role_id=payload["role_id"],
-                    feature_id=payload["feature_id"],
-                    permission_level=payload["permission_level"],
-                    updated_by=payload["updated_by"],
-                )
-                self.db.add(role_feature)
-                await self.db.commit()
-                await self.db.refresh(role_feature)
-                logger.info(f"Feature assigned to role successfully: role_id: {payload['role_id']}, feature_id: {payload['feature_id']},created_by: {payload['updated_by']}")
-                return 200, "Success"
-            elif payload["action"] == "edit":
+            
+            if payload["action"] == "edit":
                 role_feature = await self.db.scalar(
                     select(RoleFeature).where(
                         RoleFeature.role_id == payload["role_id"],
@@ -589,4 +613,81 @@ class UAMRepository:
                 return 200, "Success"
         except Exception as e:
             logger.error(f"Error in create_feature_role_mapping: {str(e)}", exc_info=True)
+            return 500, str(e)
+
+    async def bulk_assign_features(self, payload: dict) -> tuple:
+        """Assigns or updates permission levels for multiple features mapped to roles."""
+        try:
+            logger.info(f"Processing bulk_assign_features with payload: {payload}")
+            features = payload["features"]
+            updated_by = payload["updated_by"]
+
+            for item in features:
+                role_id = item.role_id
+                feature_id = item.feature_id
+                permission_level = item.permission_level
+                if str(permission_level) not in ["1", "2", "3", "4"]:
+                    logger.warning(f"Invalid permission level: {permission_level} for feature: {feature_id}")
+                    continue
+
+                feature_exists = await self.db.scalar(
+                    select(Feature.feature_id).where(Feature.feature_id == feature_id)
+                )
+                if not feature_exists:
+                    logger.warning(f"Feature ID not found: {feature_id}")
+                    continue
+
+                # Check if mapping exists
+                role_feature = await self.db.scalar(
+                    select(RoleFeature).where(
+                        RoleFeature.role_id == role_id,
+                        RoleFeature.feature_id == feature_id,
+                    )
+                )
+
+                if role_feature:
+                    # Update existing mapping
+                    role_feature.permission_level = permission_level
+                    role_feature.updated_by = updated_by
+                else:
+                    # Create new mapping
+                    new_role_feature = RoleFeature(
+                        role_id=role_id,
+                        feature_id=feature_id,
+                        permission_level=permission_level,
+                        updated_by=updated_by,
+                    )
+                    self.db.add(new_role_feature)
+
+            await self.db.commit()
+            logger.info(f"Bulk feature assignment completed successfully by: {updated_by}")
+            return 200, "Success"
+
+        except Exception as e:
+            logger.error(f"Error in bulk_assign_features: {str(e)}", exc_info=True)
+            return 500, str(e)
+
+    async def edit_user_details(self, payload: dict) -> tuple:
+        """Edits user details like first name, last name, role, and organization."""
+        try:
+            logger.info(f"Processing edit_user_details with payload: {payload}")
+            user_id = payload["user_id"]
+            
+            user = await self.db.scalar(select(User).where(User.user_id == user_id, User.is_active == 1))
+            if not user:
+                logger.info(f"User not found: {user_id}")
+                return 404, "User not found"
+
+            # Update fields
+            user.first_name = payload.get("first_name", user.first_name)
+            user.last_name = payload.get("last_name", user.last_name)
+            user.org_id = payload.get("org_id", user.org_id)
+            user.role_id = payload.get("role_id", user.role_id)
+            # user.updated_by = payload["updated_by"]
+            
+            await self.db.commit()
+            logger.info(f"User details updated successfully: {user_id} by {payload['updated_by']}")
+            return 200, "Success"
+        except Exception as e:
+            logger.error(f"Error in edit_user_details: {str(e)}", exc_info=True)
             return 500, str(e)

@@ -60,12 +60,17 @@ class DeleteOrg(BaseModel):
     token:str
     org_id:str
 
+class DeleteRole(BaseModel):
+    token:str
+    role_id:str
+
 class RoleDetails(BaseModel):
     token:str
 
 class CreateRole(BaseModel):
     token:str
     role_name:str
+    permission_level:int
 
 class EditRole(BaseModel):
     token:str
@@ -108,3 +113,20 @@ class DeleteFeatureRole(BaseModel):
     token:str
     role_id:str
     feature_id:str
+
+class FeatureAssignItem(BaseModel):
+    role_id: str
+    feature_id: str
+    permission_level: int
+
+class FeatureAssignRequest(BaseModel):
+    token: str
+    features: List[FeatureAssignItem]
+
+class EditUserRequest(BaseModel):
+    token: str
+    user_id: str
+    first_name: str
+    last_name: str
+    org_id: str
+    role_id: str
