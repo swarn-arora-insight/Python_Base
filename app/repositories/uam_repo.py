@@ -240,6 +240,7 @@ class UAMRepository:
                     return 400, "Role name already exists."
 
                 role.role_name = payload["role_name"]
+                role.permission_level = payload["permission_level"]
                 role.updated_by = payload["updated_by"]
 
                 await self.db.commit()
@@ -691,3 +692,30 @@ class UAMRepository:
         except Exception as e:
             logger.error(f"Error in edit_user_details: {str(e)}", exc_info=True)
             return 500, str(e)
+
+    async def get_role_permission_level(self, role_id: str) -> Optional[int]:
+        """Fetches the permission level of a role."""
+        try:
+            result = await self.db.scalar(select(Role.permission_level).where(Role.role_id == role_id))
+            return result
+        except Exception as e:
+            logger.error(f"Error fetching permission level for role {role_id}: {str(e)}")
+            return None
+
+    async def check_org_exists(self, org_id: str) -> bool:
+        """Checks if an organization exists."""
+        try:
+            result = await self.db.scalar(select(Organization.id).where(Organization.org_id == org_id))
+            return result is not None
+        except Exception as e:
+            logger.error(f"Error checking org check_org_exists {org_id}: {str(e)}")
+            return False
+
+    async def check_role_exists(self, role_id: str) -> bool:
+        """Checks if a role exists."""
+        try:
+            result = await self.db.scalar(select(Role.id).where(Role.role_id == role_id))
+            return result is not None
+        except Exception as e:
+            logger.error(f"Error checking role check_role_exists {role_id}: {str(e)}")
+            return False

@@ -553,9 +553,58 @@ async def edit_role(
             "response": {},
         }
 
+    if str(payload.permission_level) not in ["1", "2", "3", "4"]:
+        logger.info("Invalid permission level.")
+        return {
+            "header": {
+                "code": 400,
+                "message": "Invalid permission level.",
+            },
+            "response": {},
+        }
+
+    # Actor Permission Check
+    actor_user_id = token_data[0]["user_id"]
+    actor_user_details = await service.get_user_details(actor_user_id)
+    if not actor_user_details:
+         return {
+            "header": {
+                "code": 403,
+                "message": "Actor user not found.",
+            },
+            "response": {},
+        }
+    
+    actor_role_id = actor_user_details.get("role_id")
+    actor_permission_level = await uam_repo.get_role_permission_level(actor_role_id)
+
+    if actor_permission_level is None or actor_permission_level < 3:
+        logger.info(f"Insufficient permissions. User {actor_user_id} has level {actor_permission_level}")
+        return {
+            "header": {
+                "code": 403,
+                "message": "Insufficient permissions. You need at least Edit (Level 3) permission.",
+            },
+            "response": {},
+        }
+
+    # Self-Sabotage Check: Actor cannot lower their own permission level
+    # If the target role is the same as the actor's role
+    if payload.role_id == actor_role_id:
+        if payload.permission_level != actor_permission_level:
+            logger.info(f"User {actor_user_id} attempted to change their own role permission level.")
+            return {
+                "header": {
+                    "code": 400,
+                    "message": "You cannot change your own role permission level.",
+                },
+                "response": {},
+            }
+
     payload = {
         "role_name": role_name,
         "role_id": payload.role_id,
+        "permission_level": payload.permission_level,
         "updated_by": token_data[0]["user_id"],
         "action": "edit",
     }
@@ -1133,22 +1182,10 @@ async def edit_user(
     
     # Permission Level Logic: 1=Read, 2=Write, 3=Edit, 4=Delete
     # Actor must have at least level 3 to EDIT
-    if not actor_role:
-        return {
-            "header": {
-                "code": 403,
-                "message": "Actor role not found.",
-            },
-            "response": {},
-        }
+    permission_level = await uam_repo.get_role_permission_level(actor_role_id)
     
-    
-    role_stmt = select(Role).where(Role.role_id == actor_role_id)
-    role_result = await db.execute(role_stmt)
-    actor_role_obj = role_result.scalars().first()
-    
-    if not actor_role_obj or actor_role_obj.permission_level < 3:
-        logger.info(f"Insufficient permissions. User {actor_user_id} has level {actor_role_obj.permission_level if actor_role_obj else 'None'}")
+    if permission_level is None or permission_level < 3:
+        logger.info(f"Insufficient permissions. User {actor_user_id} has level {permission_level}")
         return {
             "header": {
                 "code": 403,
@@ -1177,9 +1214,7 @@ async def edit_user(
 
     # 3. Validate Existence of New Role/Org
     # Check Org
-    org_stmt = select(Organization).where(Organization.org_id == payload.org_id)
-    org_result = await db.execute(org_stmt)
-    if not org_result.scalars().first():
+    if not await uam_repo.check_org_exists(payload.org_id):
          return {
             "header": {
                 "code": 400,
@@ -1189,9 +1224,7 @@ async def edit_user(
         }
         
     # Check Role
-    role_target_stmt = select(Role).where(Role.role_id == payload.role_id)
-    role_target_result = await db.execute(role_target_stmt)
-    if not role_target_result.scalars().first():
+    if not await uam_repo.check_role_exists(payload.role_id):
          return {
             "header": {
                 "code": 400,
