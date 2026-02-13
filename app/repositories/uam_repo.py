@@ -210,7 +210,7 @@ class UAMRepository:
                 role = Role(
                     role_name=payload["role_name"],
                     role_id=payload["role_id"],
-                    permission_level=payload.get("permission_level", 1),
+                    # permission_level=payload.get("permission_level", 1),
                     updated_by=payload["updated_by"],
                 )
                 self.db.add(role)
@@ -240,7 +240,7 @@ class UAMRepository:
                     return 400, "Role name already exists."
 
                 role.role_name = payload["role_name"]
-                role.permission_level = payload["permission_level"]
+                # role.permission_level = payload["permission_level"]
                 role.updated_by = payload["updated_by"]
 
                 await self.db.commit()
@@ -773,4 +773,54 @@ class UAMRepository:
             return result is not None
         except Exception as e:
             logger.error(f"Error checking role check_role_exists {role_id}: {str(e)}")
+            return False
+
+    async def check_feature_permission(self, payload: dict) -> bool:
+        """
+        Checks if a role has the required permission level for a specific feature.
+        Payload: {
+            "role_id": str,
+            "feature_name": str,
+            "required_level": int
+        }
+        """
+        try:
+            role_id = payload.get("role_id")
+            feature_name = payload.get("feature_name")
+            required_level = payload.get("required_level")
+
+            # 1. Get Feature ID
+            feature_id = await self.db.scalar(
+                select(Feature.feature_id).where(Feature.feature_name == feature_name)
+            )
+            if not feature_id:
+                logger.warning(f"Feature not found: {feature_name}")
+                return False
+
+            # 2. Get Permission Level for Role + Feature
+            current_level = await self.db.scalar(
+                select(RoleFeature.permission_level).where(
+                    RoleFeature.role_id == role_id,
+                    RoleFeature.feature_id == feature_id
+                )
+            )
+
+            if current_level is None:
+                logger.info(f"No permission mapping found for role {role_id} on feature {feature_name}")
+                return False
+            
+            # 3. Check Level (1=None, 2=Read, 3=Write, 4=Delete)
+            # Logic: Has permission if current_level >= required_level
+            # AND current_level > 1 (Since 1 is NONE, usually implies no access, but strict check is >= required)
+            # If required is 1 (None), then 1 is enough? 
+            # Enum: NONE=1, READ=2...
+            # If I require READ (2), current must be >= 2.
+            # If current is 1 (None), 1 >= 2 is False. Correct.
+            
+            has_permission = current_level >= required_level
+            logger.info(f"Permission Check: Role={role_id}, Feat={feature_name}, Cur={current_level}, Req={required_level} -> {has_permission}")
+            return has_permission
+
+        except Exception as e:
+            logger.error(f"Error checking feature permission: {str(e)}", exc_info=True)
             return False

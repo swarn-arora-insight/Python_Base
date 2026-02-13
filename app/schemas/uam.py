@@ -70,13 +70,13 @@ class RoleDetails(BaseModel):
 class CreateRole(BaseModel):
     token:str
     role_name:str
-    permission_level:int
+    # permission_level:int
 
 class EditRole(BaseModel):
     token:str
     role_name:str
     role_id:str
-    permission_level:int
+    # permission_level:int
 
 class GetFeatures(BaseModel):
     token:str

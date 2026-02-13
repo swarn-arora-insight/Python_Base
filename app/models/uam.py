@@ -3,6 +3,13 @@ from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Table, Date
 from sqlalchemy.dialects.mysql import TINYINT
 from sqlalchemy.orm import relationship
 from models.base import Base
+import enum
+
+class PermissionLevel(enum.IntEnum):
+    NONE = 1
+    READ = 2
+    WRITE = 3
+    DELETE = 4
 
 # Association Table for Role <-> Feature
 # role_feature_association = Table(

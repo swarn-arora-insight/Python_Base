@@ -103,6 +103,38 @@ async def list_of_organizations(
             },
             "response": {},
         }
+    
+    # Feature-Based Permission Check
+    # Required: Feature="UAM Org", Level=READ (2)
+    actor_user_id = token_data[0]["user_id"]
+    actor_user_details = await service.get_user_details(actor_user_id)
+    if not actor_user_details:
+         return {
+            "header": {
+                "code": 403,
+                "message": "Actor user not found.",
+            },
+            "response": {},
+        }
+    
+    actor_role_id = actor_user_details.get("role_id")
+    uam_repo = UAMRepository(db)
+    
+    has_permission = await uam_repo.check_feature_permission({
+        "role_id": actor_role_id,
+        "feature_name": "UAM Org",
+        "required_level": 2 # READ
+    })
+
+    if not has_permission:
+        logger.info(f"Insufficient permissions: User {actor_user_id} lacks READ access to 'UAM Org'")
+        return {
+            "header": {
+                "code": 403,
+                "message": "Insufficient permissions. You need READ access to 'UAM Org' feature.",
+            },
+            "response": {},
+        }
 
     uam_service = UAMRepository(db)
     payload = {"action": "info"}
@@ -162,6 +194,37 @@ async def create_organizations(
         }
 
     uam_repo = UAMRepository(db)
+
+    # Feature-Based Permission Check
+    # Required: Feature="UAM Org", Level=WRITE (3)
+    actor_user_id = token_data[0]["user_id"]
+    actor_user_details = await service.get_user_details(actor_user_id)
+    if not actor_user_details:
+         return {
+            "header": {
+                "code": 403,
+                "message": "Actor user not found.",
+            },
+            "response": {},
+        }
+    
+    actor_role_id = actor_user_details.get("role_id")
+    
+    has_permission = await uam_repo.check_feature_permission({
+        "role_id": actor_role_id,
+        "feature_name": "UAM Org",
+        "required_level": 3 # WRITE
+    })
+
+    if not has_permission:
+        logger.info(f"Insufficient permissions: User {actor_user_id} lacks WRITE access to 'UAM Org'")
+        return {
+            "header": {
+                "code": 403,
+                "message": "Insufficient permissions. You need WRITE access to 'UAM Org' feature.",
+            },
+            "response": {},
+        }
 
     fetch_org = await uam_repo.get_org_by_key({"org_name": org_name})
     if len(fetch_org) > 0:
@@ -244,6 +307,38 @@ async def edit_organizations(
     org_name = payload.org_name.strip()
 
     uam_repo = UAMRepository(db)
+
+    # Feature-Based Permission Check
+    # Required: Feature="UAM Org", Level=WRITE (3)
+    actor_user_id = token_data[0]["user_id"]
+    actor_user_details = await service.get_user_details(actor_user_id)
+    if not actor_user_details:
+         return {
+            "header": {
+                "code": 403,
+                "message": "Actor user not found.",
+            },
+            "response": {},
+        }
+    
+    actor_role_id = actor_user_details.get("role_id")
+    
+    has_permission = await uam_repo.check_feature_permission({
+        "role_id": actor_role_id,
+        "feature_name": "UAM Org",
+        "required_level": 3 # WRITE
+    })
+
+    if not has_permission:
+        logger.info(f"Insufficient permissions: User {actor_user_id} lacks WRITE access to 'UAM Org'")
+        return {
+            "header": {
+                "code": 403,
+                "message": "Insufficient permissions. You need WRITE access to 'UAM Org' feature.",
+            },
+            "response": {},
+        }
+
     orgs = await uam_repo.get_org_by_key({"org_id": org_id})
     if len(orgs) == 0:
         logger.info("Invalid organization details")
@@ -315,6 +410,38 @@ async def delete_organizations(
 
     org_id = payload.org_id
     uam_repo = UAMRepository(db)
+    
+    # Feature-Based Permission Check
+    # Required: Feature="UAM Org", Level=DELETE (4)
+    actor_user_id = token_data[0]["user_id"]
+    actor_user_details = await service.get_user_details(actor_user_id)
+    if not actor_user_details:
+         return {
+            "header": {
+                "code": 403,
+                "message": "Actor user not found.",
+            },
+            "response": {},
+        }
+    
+    actor_role_id = actor_user_details.get("role_id")
+    
+    has_permission = await uam_repo.check_feature_permission({
+        "role_id": actor_role_id,
+        "feature_name": "UAM Org",
+        "required_level": 4 # DELETE
+    })
+
+    if not has_permission:
+        logger.info(f"Insufficient permissions: User {actor_user_id} lacks DELETE access to 'UAM Org'")
+        return {
+            "header": {
+                "code": 403,
+                "message": "Insufficient permissions. You need DELETE access to 'UAM Org' feature.",
+            },
+            "response": {},
+        }
+
     orgs = await uam_repo.get_org_by_key({"org_id": org_id})
     if len(orgs) == 0:
         logger.info("Invalid organization details")
@@ -381,6 +508,38 @@ async def get_roles(
             },
             "response": {},
         }
+    
+    # Feature-Based Permission Check
+    # Required: Feature="UAM Role", Level=READ (2)
+    actor_user_id = token_data[0]["user_id"]
+    actor_user_details = await service.get_user_details(actor_user_id)
+    if not actor_user_details:
+         return {
+            "header": {
+                "code": 403,
+                "message": "Actor user not found.",
+            },
+            "response": {},
+        }
+    
+    actor_role_id = actor_user_details.get("role_id")
+    uam_repo = UAMRepository(db)
+    
+    has_permission = await uam_repo.check_feature_permission({
+        "role_id": actor_role_id,
+        "feature_name": "UAM Role",
+        "required_level": 2 # READ
+    })
+
+    if not has_permission:
+        logger.info(f"Insufficient permissions: User {actor_user_id} lacks READ access to 'UAM Role'")
+        return {
+            "header": {
+                "code": 403,
+                "message": "Insufficient permissions. You need READ access to 'UAM Role' feature.",
+            },
+            "response": {},
+        }
 
     uam_service = UAMRepository(db)
     role_details = await uam_service.get_all_roles()
@@ -438,7 +597,37 @@ async def create_role(
             "response": {},
         }
 
+    # Feature-Based Permission Check
+    # Required: Feature="UAM Role", Level=WRITE (3)
+    actor_user_id = token_data[0]["user_id"]
+    actor_user_details = await service.get_user_details(actor_user_id)
+    if not actor_user_details:
+         return {
+            "header": {
+                "code": 403,
+                "message": "Actor user not found.",
+            },
+            "response": {},
+        }
+    
+    actor_role_id = actor_user_details.get("role_id")
     uam_repo = UAMRepository(db)
+
+    has_permission = await uam_repo.check_feature_permission({
+        "role_id": actor_role_id,
+        "feature_name": "UAM Role",
+        "required_level": 3 # WRITE
+    })
+
+    if not has_permission:
+        logger.info(f"Insufficient permissions: User {actor_user_id} lacks WRITE access to 'UAM Role'")
+        return {
+            "header": {
+                "code": 403,
+                "message": "Insufficient permissions. You need WRITE access to 'UAM Role' feature.",
+            },
+            "response": {},
+        }
 
     fetch_role = await uam_repo.get_role_by_key({"role_name": role_name})
     if len(fetch_role) > 0:
@@ -450,15 +639,15 @@ async def create_role(
             },
             "response": {},
         }
-    if str(payload.permission_level) not in ["1", "2", "3", "4"]:
-        logger.info("Invalid permission level.")
-        return {
-            "header": {
-                "code": 400,
-                "message": "Invalid permission level.",
-            },
-            "response": {},
-        }    
+    # if str(payload.permission_level) not in ["1", "2", "3", "4"]:
+    #     logger.info("Invalid permission level.")
+    #     return {
+    #         "header": {
+    #             "code": 400,
+    #             "message": "Invalid permission level.",
+    #         },
+    #         "response": {},
+    #     }    
 
     roles = await uam_repo.get_all_roles()
     if not roles:
@@ -470,7 +659,7 @@ async def create_role(
     payload = {
         "role_name": role_name,
         "role_id": next_role_id,
-        "permission_level": payload.permission_level,
+        # "permission_level": payload.permission_level,
         "updated_by": token_data[0]["user_id"],
         "action": "create",
     }
@@ -553,15 +742,15 @@ async def edit_role(
             "response": {},
         }
 
-    if str(payload.permission_level) not in ["1", "2", "3", "4"]:
-        logger.info("Invalid permission level.")
-        return {
-            "header": {
-                "code": 400,
-                "message": "Invalid permission level.",
-            },
-            "response": {},
-        }
+    # if str(payload.permission_level) not in ["1", "2", "3", "4"]:
+    #     logger.info("Invalid permission level.")
+    #     return {
+    #         "header": {
+    #             "code": 400,
+    #             "message": "Invalid permission level.",
+    #         },
+    #         "response": {},
+    #     }
 
     # Actor Permission Check
     actor_user_id = token_data[0]["user_id"]
@@ -575,36 +764,45 @@ async def edit_role(
             "response": {},
         }
     
-    actor_role_id = actor_user_details.get("role_id")
-    actor_permission_level = await uam_repo.get_role_permission_level(actor_role_id)
+    # Feature-Based Permission Check
+    # Required: Feature="UAM Role", Level=WRITE (3)
+    has_permission = await uam_repo.check_feature_permission({
+        "role_id": actor_role_id,
+        "feature_name": "UAM Role",
+        "required_level": 3 # WRITE
+    })
 
-    if actor_permission_level is None or actor_permission_level < 3:
-        logger.info(f"Insufficient permissions. User {actor_user_id} has level {actor_permission_level}")
+    if not has_permission:
+        logger.info(f"Insufficient permissions: User {actor_user_id} lacks WRITE access to 'UAM Role'")
         return {
             "header": {
                 "code": 403,
-                "message": "Insufficient permissions. You need at least Edit (Level 3) permission.",
+                "message": "Insufficient permissions. You need WRITE access to 'UAM Role' feature.",
             },
             "response": {},
         }
+    
+    # Self-Sabotage Check (Legacy Logic on Permission Level)
+    # Fetch global permission level for self-check
+    # actor_permission_level = await uam_repo.get_role_permission_level(actor_role_id)
 
     # Self-Sabotage Check: Actor cannot lower their own permission level
     # If the target role is the same as the actor's role
     if payload.role_id == actor_role_id:
-        if payload.permission_level != actor_permission_level:
-            logger.info(f"User {actor_user_id} attempted to change their own role permission level.")
-            return {
-                "header": {
-                    "code": 400,
-                    "message": "You cannot change your own role permission level.",
-                },
-                "response": {},
-            }
+        # if actor_permission_level is not None and payload.permission_level < actor_permission_level:
+        logger.info(f"User {actor_user_id} attempted to lower their own permission level.")
+        return {
+            "header": {
+                "code": 400,
+                "message": "You cannot lower your own permission level.",
+            },
+            "response": {},
+        }
 
     payload = {
         "role_name": role_name,
         "role_id": payload.role_id,
-        "permission_level": payload.permission_level,
+        # "permission_level": payload.permission_level,
         "updated_by": token_data[0]["user_id"],
         "action": "edit",
     }
@@ -661,6 +859,38 @@ async def delete_role(
         }
 
     uam_repo = UAMRepository(db)
+    
+    # Feature-Based Permission Check
+    # Required: Feature="UAM Role", Level=DELETE (4)
+    actor_user_id = token_data[0]["user_id"]
+    actor_user_details = await service.get_user_details(actor_user_id)
+    if not actor_user_details:
+         return {
+            "header": {
+                "code": 403,
+                "message": "Actor user not found.",
+            },
+            "response": {},
+        }
+    
+    actor_role_id = actor_user_details.get("role_id")
+    
+    has_permission = await uam_repo.check_feature_permission({
+        "role_id": actor_role_id,
+        "feature_name": "UAM Role",
+        "required_level": 4 # DELETE
+    })
+
+    if not has_permission:
+        logger.info(f"Insufficient permissions: User {actor_user_id} lacks DELETE access to 'UAM Role'")
+        return {
+            "header": {
+                "code": 403,
+                "message": "Insufficient permissions. You need DELETE access to 'UAM Role' feature.",
+            },
+            "response": {},
+        }
+
     fetch_role = await uam_repo.get_role_by_key({"role_id": payload.role_id})
     if len(fetch_role) == 0:
         logger.info("Role not found")
@@ -782,6 +1012,39 @@ async def bulk_feature_assign(
         }
 
     uam_repo = UAMRepository(db)
+    # 1. Check Actor's Permission Level
+    # Fetch actor's role to get permission level
+    actor_user_details = await service.get_user_details(token_data[0]["user_id"])
+    if not actor_user_details:
+         return {
+            "header": {
+                "code": 400,
+                "message": "Actor user not found.",
+            },
+            "response": {},
+        }
+    
+    actor_role_id = actor_user_details.get("role_id")
+
+    # Feature-Based Permission Check
+    # Required: Feature="UAM Role", Level=WRITE (3)
+    has_permission = await uam_repo.check_feature_permission({
+        "role_id": actor_role_id,
+        "feature_name": "UAM Role",
+        "required_level": 3 # WRITE
+    })
+    
+    if not has_permission:
+        logger.info(f"Insufficient permissions. User {actor_user_id} lacks WRITE access to 'UAM Role'")
+        return {
+            "header": {
+                "code": 403,
+                "message": "Insufficient permissions. You need WRITE access to 'UAM Role' feature.",
+            },
+            "response": {},
+        }
+
+    
     
     # Prepare payload for repository
     repo_payload = {
@@ -1180,16 +1443,20 @@ async def edit_user(
     actor_role_id = actor_user_details.get("role_id")
     actor_role = await uam_repo.get_role_by_key({"role_id": actor_role_id})
     
-    # Permission Level Logic: 1=Read, 2=Write, 3=Edit, 4=Delete
-    # Actor must have at least level 3 to EDIT
-    permission_level = await uam_repo.get_role_permission_level(actor_role_id)
+    # Feature-Based Permission Check
+    # Required: Feature="UAM User", Level=WRITE (3)
+    has_permission = await uam_repo.check_feature_permission({
+        "role_id": actor_role_id,
+        "feature_name": "UAM User",
+        "required_level": 3 # WRITE
+    })
     
-    if permission_level is None or permission_level < 3:
-        logger.info(f"Insufficient permissions. User {actor_user_id} has level {permission_level}")
+    if not has_permission:
+        logger.info(f"Insufficient permissions. User {actor_user_id} lacks WRITE access to 'UAM User'")
         return {
             "header": {
                 "code": 403,
-                "message": "Insufficient permissions. You need at least Edit (Level 3) permission.",
+                "message": "Insufficient permissions. You need WRITE access to 'UAM User' feature.",
             },
             "response": {},
         }
@@ -1199,18 +1466,18 @@ async def edit_user(
     if actor_user_id == target_user_id:
         # Check if trying to change Role or Org
         # We need current user's role and org. We already have `actor_user_details`.
-        current_role_id = actor_user_details.get("role_id")
-        current_org_id = actor_user_details.get("org_id")
+        # current_role_id = actor_user_details.get("role_id")
+        # current_org_id = actor_user_details.get("org_id")
         
-        if payload.role_id != current_role_id or payload.org_id != current_org_id:
-             logger.info(f"User {actor_user_id} attempted to change their own role/org.")
-             return {
-                "header": {
-                    "code": 400,
-                    "message": "You cannot update your own Role or Organization.",
-                },
-                "response": {},
-            }
+        # if payload.role_id != current_role_id or payload.org_id != current_org_id:
+        logger.info(f"User {actor_user_id} attempted to change their own role/org.")
+        return {
+            "header": {
+                "code": 400,
+                "message": "You cannot update your own Role or Organization.",
+            },
+            "response": {},
+        }
 
     # 3. Validate Existence of New Role/Org
     # Check Org
