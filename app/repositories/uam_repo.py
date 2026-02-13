@@ -121,7 +121,7 @@ class UAMRepository:
             )
 
             if not org:
-                logger.info(f"Organization not found: {payload['org_id']},attempted_by: {payload['updated_by']}")
+                logger.info(f"Organization not found: org_id: {payload['org_id']},attempted_by: {payload['updated_by']}")
                 return 404, "Organization not found"
 
             org_users = await self.db.execute(
@@ -139,7 +139,7 @@ class UAMRepository:
             org.is_active = 0
             org.updated_by = payload["updated_by"]
             await self.db.commit()
-            logger.info(f"Organization deleted successfully: {payload['org_id']},updated_by: {payload['updated_by']}")
+            logger.info(f"Organization deleted successfully: org_id: {payload['org_id']},updated_by: {payload['updated_by']}")
             return 200, "Success"
         except Exception as e:
             logger.error(f"Error in org_delete: {str(e)}", exc_info=True)
@@ -216,7 +216,7 @@ class UAMRepository:
                 self.db.add(role)
                 await self.db.commit()
                 await self.db.refresh(role)
-                logger.info(f"Role created successfully: {payload['role_name']},updated_by: {payload['updated_by']}")
+                logger.info(f"Role created successfully: role_id:{payload['role_id']},role_name:{payload['role_name']},updated_by: {payload['updated_by']}")
                 return 200, "Success"
             elif payload["action"] == "edit":
                 role = await self.db.scalar(
@@ -244,7 +244,7 @@ class UAMRepository:
                 role.updated_by = payload["updated_by"]
 
                 await self.db.commit()
-                logger.info(f"Role updated successfully: {payload['role_name']} ,updated_by: {payload['updated_by']}")
+                logger.info(f"Role updated successfully: role_id:{payload['role_id']},role_name:{payload['role_name']},updated_by: {payload['updated_by']}")
                 return 200, "Success"
         except Exception as e:
             logger.error(f"Error in role_entry: {str(e)}", exc_info=True)
@@ -259,7 +259,7 @@ class UAMRepository:
             )
 
             if not role:
-                logger.info(f"Role not found: {payload['role_id']},attempted_by: {payload['updated_by']}")
+                logger.info(f"Role not found: role_id:{payload['role_id']},attempted_by: {payload['updated_by']}")
                 return 404, "Role not found"
 
             role_users = await self.db.execute(
@@ -277,26 +277,81 @@ class UAMRepository:
             role.is_active = 0
             role.updated_by = payload["updated_by"]
             await self.db.commit()
-            logger.info(f"Role deleted successfully: {payload['role_id']},updated_by: {payload['updated_by']}")
+            logger.info(f"Role deleted successfully: role_id:{payload['role_id']},updated_by: {payload['updated_by']}")
             return 200, "Success"
         except Exception as e:
             logger.error(f"Error in role_delete: {str(e)}", exc_info=True)
             return 500, str(e)
 
     # Feature
-    async def feature_list(self):
-        """Retrieves all features ordered by their ID."""
-        logger.info("Fetching feature list")
-        result = await self.db.execute(
-            select(FeatureGroup.feature_grp_id, FeatureGroup.feature_grp_name).order_by(FeatureGroup.id.asc())
+    async def feature_list(self, role_id: str):
+        """Retrieves all features grouped by their feature group name, including permission levels for the specified role."""
+
+        role = await self.db.scalar(
+            select(Role).where(Role.role_id == role_id)
         )
+
+        if not role:
+            logger.info(f"Role not found: role_id:{role_id}")
+            # handle in router or raise HTTPException
+            return []
+
+        result = await self.db.execute(
+            select(
+                FeatureGroup.feature_grp_id,
+                FeatureGroup.feature_grp_name
+            ).order_by(FeatureGroup.id.asc())
+        )
+
+        groups = result.all()
         feature_grp_list = []
-        for row in result.all():
+
+        for row in groups:
             get_feature = await self.db.execute(
-                select(Feature.feature_id, Feature.feature_name).where(Feature.feature_grp_id == row.feature_grp_id)
+                select(
+                    Feature.feature_id,
+                    Feature.feature_name,
+                    RoleFeature.permission_level,
+                )
+                .outerjoin(
+                    RoleFeature,
+                    (RoleFeature.feature_id == Feature.feature_id) &
+                    (RoleFeature.role_id == role_id)   
+                )
+                .where(Feature.feature_grp_id == row.feature_grp_id)
             )
-            feature_grp_list.append({"feature_grp_id": row.feature_grp_id, "feature_grp_name": row.feature_grp_name, "feature_list": [{"feature_id": f.feature_id, "feature_name": f.feature_name} for f in get_feature.all()]})
+
+            feature_grp_list.append(
+                {
+                    "feature_grp_id": row.feature_grp_id,
+                    "feature_grp_name": row.feature_grp_name,
+                    "feature_list": [
+                        {
+                            "feature_id": f.feature_id,
+                            "feature_name": f.feature_name,
+                            "permission_level": f.permission_level or 1,  
+                        }
+                        for f in get_feature.all()
+                    ],
+                }
+            )
+
         return feature_grp_list
+
+    # async def feature_list(self,role_id:str):
+    #     """Retrieves all features ordered by their ID."""
+    #     logger.info("Fetching feature list")
+    #     result = await self.db.execute(
+    #         select(FeatureGroup.feature_grp_id, FeatureGroup.feature_grp_name).order_by(FeatureGroup.id.asc())
+    #     )
+    #     feature_grp_list = []
+    #     for row in result.all():
+    #         get_feature = await self.db.execute(
+    #             select(Feature.feature_id, Feature.feature_name).where(Feature.feature_grp_id == row.feature_grp_id)
+    #         )
+    #         feature_grp_list.append({"feature_grp_id": row.feature_grp_id, "feature_grp_name": row.feature_grp_name, "feature_list": [{"feature_id": f.feature_id, "feature_name": f.feature_name} for f in get_feature.all()]})
+    #     return feature_grp_list
+     
 
     async def get_feature_group_by_key(self, payload: dict) -> Optional[FeatureGroup]:
         """Fetches a feature group based on the provided name or ID."""
@@ -372,7 +427,7 @@ class UAMRepository:
                 self.db.add(feature_group)
                 await self.db.commit()
                 await self.db.refresh(feature_group)
-                logger.info(f"Feature group created successfully: {payload['feature_grp_name']},created_by: {payload['updated_by']}")
+                logger.info(f"Feature group created successfully: feature_grp_id:{payload['feature_grp_id']},feature_grp_name:{payload['feature_grp_name']},created_by: {payload['updated_by']}")
                 return 200, "Success"
             elif payload["action"] == "edit":
                 feature_group = await self.db.scalar(
@@ -381,7 +436,7 @@ class UAMRepository:
                     )
                 )
                 if not feature_group:
-                    logger.info(f"Feature group not found: {payload['feature_grp_id']},attempted_by: {payload['updated_by']}")
+                    logger.info(f"Feature group not found: feature_grp_id:{payload['feature_grp_id']},attempted_by: {payload['updated_by']}")
                     return 404, "Feature group not found"
 
                 result = await self.db.execute(
@@ -401,14 +456,14 @@ class UAMRepository:
                     for row in result.all()
                 ]
                 if len(check_feature_group) > 0:
-                    logger.info(f"Feature group name already exists: {payload['feature_grp_name']},attempted_by: {payload['updated_by']}")
+                    logger.info(f"Feature group name already exists: feature_grp_id:{payload['feature_grp_id']},feature_grp_name:{payload['feature_grp_name']},attempted_by: {payload['updated_by']}")
                     return 400, "Feature group name already exists."
 
                 feature_group.feature_grp_name = payload["feature_grp_name"]
                 feature_group.updated_by = payload["updated_by"]
 
                 await self.db.commit()
-                logger.info(f"Feature group updated successfully: {payload['feature_grp_name']},updated_by: {payload['updated_by']}")
+                logger.info(f"Feature group updated successfully: feature_grp_id:{payload['feature_grp_id']},feature_grp_name:{payload['feature_grp_name']},updated_by: {payload['updated_by']}")
                 return 200, "Success"
             elif payload["action"] == "delete":
                 feature = await self.db.scalar(
@@ -417,11 +472,11 @@ class UAMRepository:
                     )
                 )
                 if not feature:
-                    logger.info(f"Feature not found: {payload['feature_id']},attempted_by: {payload['updated_by']}")
+                    logger.info(f"Feature not found: feature_id:{payload['feature_id']},attempted_by: {payload['updated_by']}")
                     return 404, "Feature not found"
                 await self.db.delete(feature)
                 await self.db.commit()
-                logger.info(f"Feature deleted successfully: {payload['feature_id']},deleted_by: {payload['updated_by']}")
+                logger.info(f"Feature deleted successfully: feature_id:{payload['feature_id']},deleted_by: {payload['updated_by']}")
                 return 200, "Success"
         except Exception as e:
             logger.error(f"Error in feature_group_entry: {str(e)}", exc_info=True)
@@ -477,14 +532,14 @@ class UAMRepository:
                 self.db.add(feature)
                 await self.db.commit()
                 await self.db.refresh(feature)
-                logger.info(f"Feature created successfully: {payload['feature_name']},created_by: {payload['updated_by']}")
+                logger.info(f"Feature created successfully: feature_id:{payload['feature_id']},feature_name:{payload['feature_name']},feature_grp_id:{payload['feature_grp_id']},created_by: {payload['updated_by']}")
                 return 200, "Success"
             elif payload["action"] == "edit":
                 feature = await self.db.scalar(
                     select(Feature).where(Feature.feature_id == payload["feature_id"])
                 )
                 if not feature:
-                    logger.info(f"Feature not found: {payload['feature_id']},attempted_by: {payload['updated_by']}")
+                    logger.info(f"Feature not found: feature_id:{payload['feature_id']},attempted_by: {payload['updated_by']}")
                     return 404, "Feature not found"
 
                 result = await self.db.execute(
@@ -504,14 +559,14 @@ class UAMRepository:
                     for row in result.all()
                 ]
                 if len(check_feature_group) > 0:
-                    logger.info(f"Feature group name already exists: {payload['feature_grp_name']},attempted_by: {payload['updated_by']}")
+                    logger.info(f"Feature group name already exists: feature_grp_id:{payload['feature_grp_id']},feature_grp_name:{payload['feature_grp_name']},attempted_by: {payload['updated_by']}")
                     return 400, "Feature group name already exists."
 
                 feature_group.feature_grp_name = payload["feature_grp_name"]
                 feature_group.updated_by = payload["updated_by"]
 
                 await self.db.commit()
-                logger.info(f"Feature updated successfully: {payload['feature_grp_name']},updated_by: {payload['updated_by']}")
+                logger.info(f"Feature updated successfully: feature_id:{payload['feature_id']},feature_grp_id:{payload['feature_grp_id']},updated_by: {payload['updated_by']}")
                 return 200, "Success"
         except Exception as e:
             logger.error(f"Error in feature_entry: {str(e)}", exc_info=True)
@@ -635,7 +690,7 @@ class UAMRepository:
                     select(Feature.feature_id).where(Feature.feature_id == feature_id)
                 )
                 if not feature_exists:
-                    logger.warning(f"Feature ID not found: {feature_id}")
+                    logger.warning(f"Feature ID not found: feature_id:{feature_id},attempted_by: {updated_by}")
                     continue
 
                 # Check if mapping exists
@@ -659,7 +714,7 @@ class UAMRepository:
                         updated_by=updated_by,
                     )
                     self.db.add(new_role_feature)
-
+                logger.info(f"Feature assigned successfully: role_id:{role_id},feature_id:{feature_id},permission_level:{permission_level},updated_by: {updated_by}")
             await self.db.commit()
             logger.info(f"Bulk feature assignment completed successfully by: {updated_by}")
             return 200, "Success"
@@ -676,7 +731,7 @@ class UAMRepository:
             
             user = await self.db.scalar(select(User).where(User.user_id == user_id, User.is_active == 1))
             if not user:
-                logger.info(f"User not found: {user_id}")
+                logger.info(f"User not found: user_id:{user_id},attempted_by: {payload['updated_by']}")
                 return 404, "User not found"
 
             # Update fields
@@ -687,7 +742,7 @@ class UAMRepository:
             # user.updated_by = payload["updated_by"]
             
             await self.db.commit()
-            logger.info(f"User details updated successfully: {user_id} by {payload['updated_by']}")
+            logger.info(f"User details updated successfully: user_id:{user_id},updated_by: {payload['updated_by']}")
             return 200, "Success"
         except Exception as e:
             logger.error(f"Error in edit_user_details: {str(e)}", exc_info=True)

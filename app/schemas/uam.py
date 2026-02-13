@@ -80,6 +80,7 @@ class EditRole(BaseModel):
 
 class GetFeatures(BaseModel):
     token:str
+    role_id:str
 
 class CreateFeatureGroup(BaseModel):
     token:str

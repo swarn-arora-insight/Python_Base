@@ -200,7 +200,7 @@ async def create_organizations(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "createorg", payload)
-    logger.info(f"Organization created successfully: {org_name}")
+    # logger.info(f"Organization created successfully: {org_name}")
     return {
         "header": {
             "code": 200,
@@ -273,7 +273,7 @@ async def edit_organizations(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "editorg", payload)
-    logger.info(f"Organization edited successfully: {org_name}")
+    # logger.info(f"Organization edited successfully: {org_name}")
     return {
         "header": {
             "code": 200,
@@ -342,7 +342,7 @@ async def delete_organizations(
         }
 
     UserService.update_uam_log(token_data[0]["user_id"], "deleteorg", payload)
-    logger.info(f"Organization deleted successfully: {org_id}")
+    # logger.info(f"Organization deleted successfully: {org_id}")
     return {
         "header": {
             "code": 200,
@@ -486,7 +486,7 @@ async def create_role(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "createrole", payload)
-    logger.info(f"Role created successfully: {role_name}")
+    # logger.info(f"Role created successfully: {role_name}")
     return {
         "header": {
             "code": 200,
@@ -620,7 +620,7 @@ async def edit_role(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "editrole", payload)
-    logger.info(f"Role edited successfully: {role_name}")
+    # logger.info(f"Role edited successfully: {role_name}")
     return {
         "header": {
             "code": 200,
@@ -688,7 +688,7 @@ async def delete_role(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "deleterole", payload)
-    logger.info(f"Role deleted successfully: {payload['role_id']}")
+    # logger.info(f"Role deleted successfully: {payload['role_id']}")
     return {
         "header": {
             "code": 200,
@@ -728,9 +728,9 @@ async def get_list_of_features_in_feature_group(
             },
             "response": {},
         }
-
+    role_id = payload.role_id
     uam_repo = UAMRepository(db)
-    features = await uam_repo.feature_list()
+    features = await uam_repo.feature_list(role_id)
     if len(features) == 0:
         logger.info("No features found")
         return {
@@ -802,7 +802,7 @@ async def bulk_feature_assign(
         }
 
     UserService.update_uam_log(token_data[0]["user_id"], "featureassign", repo_payload)
-    logger.info("Features assigned successfully")
+    # logger.info("Features assigned successfully")
     return {
         "header": {
             "code": 200,
@@ -898,7 +898,7 @@ async def create_feature_group(
             "response": {},
         }
     UserService.update_uam_log(token_data[0]["user_id"], "createfeaturegroup", payload)
-    logger.info(f"Feature group created successfully: {feature_grp_name}")
+    # logger.info(f"Feature group created successfully: {feature_grp_name}")
     return {
         "header": {
             "code": 200,
@@ -1008,7 +1008,7 @@ async def create_feature(
         }
 
     UserService.update_uam_log(token_data[0]["user_id"], "createfeature", payload)
-    logger.info(f"Feature created successfully: {feature_name}")
+    # logger.info(f"Feature created successfully: {feature_name}")
     return {
         "header": {
             "code": 200,
@@ -1078,7 +1078,7 @@ async def delete_feature(
         }
 
     UserService.update_uam_log(token_data[0]["user_id"], "deletefeature", payload)
-    logger.info(f"Feature deleted successfully: {feature_id}")
+    # logger.info(f"Feature deleted successfully: {feature_id}")
     return {
         "header": {
             "code": 200,
@@ -1408,7 +1408,7 @@ async def delete_feature_from_role(
         }
 
     UserService.update_uam_log(token_data[0]["user_id"], "deletefeaturerole", payload)
-    logger.info(f"Feature deleted from role successfully. Role: {role_id}, Feature: {feature_id},updated_by: {token_data[0]['user_id']}")
+    # logger.info(f"Feature deleted from role successfully. Role: {role_id}, Feature: {feature_id},updated_by: {token_data[0]['user_id']}")
     return {
         "header": {
             "code": 200,

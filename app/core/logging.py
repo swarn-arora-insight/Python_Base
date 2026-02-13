@@ -23,17 +23,11 @@ logging_config = {
             "filename": "python_base.log",
             "formatter": "detailed",
             "level": "INFO"
-        },
-        "console": {
-            "class": "logging.FileHandler",
-            "filename":"python_base.log",
-            "formatter": "detailed",
-            "level": "DEBUG"
         }
     },
     "loggers": {
         "": {  # root logger
-            "handlers": ["file", "console"],
+            "handlers": ["file"],
             "level": "DEBUG",
         }
     }
