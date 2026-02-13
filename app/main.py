@@ -1,6 +1,6 @@
 # app/main.py
 from fastapi import FastAPI, Request
-from api.v1 import user_routes, post_routes, comment_routes, uam_routes
+from api.v1 import user_routes, post_routes, comment_routes, uam_routes, dashboard_routes
 from utils.init_db import init_db
 from core.logging import logger
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,6 +55,7 @@ app.add_middleware(
 # app.include_router(comment_routes.router, prefix="/v1/comments", tags=["Comments"]) # Currently commented out and will be used based on future requirements.
 app.include_router(user_routes.router, prefix="/v1/users", tags=["Users"])
 app.include_router(uam_routes.router, prefix="/v1/uam", tags=["UAM"])
+app.include_router(dashboard_routes.router, prefix="/v1/dashboard", tags=["Dashboard"])
 
 # Initialize the database
 @app.on_event("startup")
