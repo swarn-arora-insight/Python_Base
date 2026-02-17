@@ -27,13 +27,13 @@ logging_config = {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "detailed",
-            "level": "DEBUG"
+            "level": "INFO"
         }
     },
     "loggers": {
         "": {  # root logger
             "handlers": ["file", "console"],
-            "level": "DEBUG",
+            "level": "INFO",
         }
     }
 }

@@ -31,8 +31,8 @@ async def get_dashboard_info(
         },
     }
 
-@router.get("/vauto/body")
-async def get_vauto_body(
+@router.get("/body")
+async def get_body_types(
     # auth_payload: dict = Depends(UserService.require_authorization),
     db: AsyncSession = Depends(get_db),
 ):
@@ -42,7 +42,7 @@ async def get_vauto_body(
     logger.info("Fetching vauto body details")
     
     dashboard_repo = DashboardRepository(db)
-    data = await dashboard_repo.get_vauto_body_details()
+    data = await dashboard_repo.get_body_types()
     
     return {
         "header": {
@@ -54,8 +54,8 @@ async def get_vauto_body(
         },
     }
 
-@router.get("/vauto/store")
-async def get_vauto_store(
+@router.get("/store")
+async def get_stores(
     # auth_payload: dict = Depends(UserService.require_authorization),
     db: AsyncSession = Depends(get_db),
 ):
@@ -65,7 +65,7 @@ async def get_vauto_store(
     logger.info("Fetching vauto store details")
     
     dashboard_repo = DashboardRepository(db)
-    data = await dashboard_repo.get_vauto_store_details()
+    data = await dashboard_repo.get_stores()
     
     return {
         "header": {
@@ -77,7 +77,7 @@ async def get_vauto_store(
         },
     }
 
-@router.post("/vauto/filter")
+@router.post("/filter")
 async def get_filtered_dashboard_data(
     payload: FilterDashboardRequest,
     # auth_payload: dict = Depends(UserService.require_authorization),
@@ -87,6 +87,7 @@ async def get_filtered_dashboard_data(
     Get filtered vauto inventory data.
     """
     logger.info(f"Fetching filtered data with payload: {payload}")
+
     
     dashboard_repo = DashboardRepository(db)
     

@@ -525,21 +525,21 @@ async def get_roles(
     actor_role_id = actor_user_details.get("role_id")
     uam_repo = UAMRepository(db)
     
-    has_permission = await uam_repo.check_feature_permission({
-        "role_id": actor_role_id,
-        "feature_name": "UAM Role",
-        "required_level": 2 # READ
-    })
+    # has_permission = await uam_repo.check_feature_permission({
+    #     "role_id": actor_role_id,
+    #     "feature_name": "UAM Role",
+    #     "required_level": 2 # READ
+    # })
 
-    if not has_permission:
-        logger.info(f"Insufficient permissions: User {actor_user_id} lacks READ access to 'UAM Role'")
-        return {
-            "header": {
-                "code": 403,
-                "message": "Insufficient permissions. You need READ access to 'UAM Role' feature.",
-            },
-            "response": {},
-        }
+    # if not has_permission:
+    #     logger.info(f"Insufficient permissions: User {actor_user_id} lacks READ access to 'UAM Role'")
+    #     return {
+    #         "header": {
+    #             "code": 403,
+    #             "message": "Insufficient permissions. You need READ access to 'UAM Role' feature.",
+    #         },
+    #         "response": {},
+    #     }
 
     uam_service = UAMRepository(db)
     role_details = await uam_service.get_all_roles()

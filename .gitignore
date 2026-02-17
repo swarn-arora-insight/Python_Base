@@ -34,3 +34,4 @@ app/core/config.py
 .DS_Store
 testcmp
 .env
+test.py
