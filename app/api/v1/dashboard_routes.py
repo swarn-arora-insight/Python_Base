@@ -94,7 +94,9 @@ async def get_filtered_dashboard_data(
     # Convert payload to dict, excluding None values if needed, or handle in repo
     filters = payload.dict(exclude_none=True)
     
-    data = await dashboard_repo.get_filtered_data(filters)
+    result = await dashboard_repo.get_filtered_data(filters)
+    data = result.get("data", [])
+    metrics = result.get("metrics", {})
     
     return {
         "header": {
@@ -102,7 +104,11 @@ async def get_filtered_dashboard_data(
             "message": "Success",
         },
         "response": {
-            "data": data,
-            "count": len(data)
+            # "data": data,
+            "count": len(data),
+            # "total_leads": metrics.get("total_leads", 0),
+            # "avg_leads_per_day": metrics.get("avg_leads", 0),
+            "metrics": metrics
+
         },
     }

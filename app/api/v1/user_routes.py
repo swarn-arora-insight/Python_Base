@@ -105,6 +105,38 @@ async def user_list(
             },
             "response": {},
         }
+    # Feature-Based Permission Check
+    # Required: Feature="Roles", Level=READ (2)
+    actor_user_id = token_data[0]["user_id"]
+    actor_user_details = await service.get_user_details(actor_user_id)
+    if not actor_user_details:
+         return {
+            "header": {
+                "code": 403,
+                "message": "Actor user not found.",
+            },
+            "response": {},
+        }
+    
+    actor_role_id = actor_user_details.get("role_id")
+    uam_repo = UAMRepository(db)
+    
+    has_permission = await uam_repo.check_feature_permission({
+        "role_id": actor_role_id,
+        "feature_name": "Users",
+        "required_level": 2 # READ
+    })
+
+    if not has_permission:
+        logger.info(f"Insufficient permissions: User {actor_user_id} lacks READ access to 'Users'")
+        return {
+            "header": {
+                "code": 403,
+                "message": "Insufficient permissions. You need READ access to 'Users' feature.",
+            },
+            "response": {},
+        }
+   
 
     user_details = await service.get_all_users()
 

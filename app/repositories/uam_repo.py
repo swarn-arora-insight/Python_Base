@@ -150,7 +150,7 @@ class UAMRepository:
         """Retrieves all active roles along with the count and names of assigned users."""
         logger.info("Fetching all active roles")
         result = await self.db.execute(
-            select(Role.role_id, Role.role_name,Role.permission_level)
+            select(Role.role_id, Role.role_name)
             .where(Role.is_active == 1)
             .order_by(Role.id.asc())
         )
@@ -170,7 +170,7 @@ class UAMRepository:
                 {
                     "role_id": row.role_id,
                     "role_name": row.role_name,
-                    "permission_level": row.permission_level,
+                    # "permission_level": row.permission_level,
                     "user_count": len(users),
                     "user_names": [f"{u.first_name} {u.last_name}" for u in users],
                 }
