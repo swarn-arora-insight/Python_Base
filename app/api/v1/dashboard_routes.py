@@ -77,6 +77,29 @@ async def get_stores(
         },
     }
 
+@router.get("/vin")
+async def get_vins(
+    # auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get unique VINs from vauto inventory.
+    """
+    logger.info("Fetching vauto vin details")
+    
+    dashboard_repo = DashboardRepository(db)
+    data = await dashboard_repo.get_vins()
+    
+    return {
+        "header": {
+            "code": 200,
+            "message": "Success",
+        },
+        "response": {
+            "vins": data
+        },
+    }
+
 @router.post("/filter")
 async def get_filtered_dashboard_data(
     payload: FilterDashboardRequest,

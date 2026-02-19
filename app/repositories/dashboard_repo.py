@@ -624,6 +624,22 @@ class DashboardRepository:
         )
         return sorted([item["store"] for item in results if item.get("store")])
 
+    async def get_vins(self) -> List[str]:
+        today = datetime.now()
+        start_of_current_week = (today - timedelta(days=today.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        date_clause = self._generate_partition_clause(start_of_current_week, 7)
+
+        results = await self.fetch_dynamic_data(
+            table=self.athena_vauto_table,
+            columns=["vin"],
+            distinct=True,
+            custom_where=date_clause
+        )
+        logger.info(f"Fetched {len(results)} unique VINs")
+        return sorted([item["vin"] for item in results if item.get("vin")])
+
 
     def _get_date_tuples_str(self, start_date: datetime, days: int) -> str:
         date_tuples = []
