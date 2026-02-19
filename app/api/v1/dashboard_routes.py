@@ -97,7 +97,7 @@ async def get_filtered_dashboard_data(
     result = await dashboard_repo.get_filtered_data(filters)
     data = result.get("data", [])
     metrics = result.get("metrics", {})
-    graph_data = result.get("graph_data", [])
+    # graph_data = result.get("graph_data", [])
     
     return {
         "header": {
@@ -110,6 +110,34 @@ async def get_filtered_dashboard_data(
             # "total_leads": metrics.get("total_leads", 0),
             # "avg_leads_per_day": metrics.get("avg_leads", 0),
             "metrics": metrics,
+            # "graph_data": graph_data
+        },
+    }
+
+@router.post("/leadperformance")
+async def get_lead_performance_data(
+    payload: FilterDashboardRequest,
+    # auth_payload: dict = Depends(UserService.require_authorization),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get lead performance graph data.
+    """
+    logger.info(f"Fetching lead performance data with payload: {payload}")
+
+    dashboard_repo = DashboardRepository(db)
+    
+    filters = payload.dict(exclude_none=True)
+    
+    result = await dashboard_repo.get_lead_performance_data(filters)
+    graph_data = result.get("graph_data", [])
+    
+    return {
+        "header": {
+            "code": 200,
+            "message": "Success",
+        },
+        "response": {
             "graph_data": graph_data
         },
     }
