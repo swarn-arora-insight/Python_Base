@@ -97,6 +97,7 @@ async def get_filtered_dashboard_data(
     result = await dashboard_repo.get_filtered_data(filters)
     data = result.get("data", [])
     metrics = result.get("metrics", {})
+    graph_data = result.get("graph_data", [])
     
     return {
         "header": {
@@ -105,10 +106,10 @@ async def get_filtered_dashboard_data(
         },
         "response": {
             # "data": data,
-            "count": len(data),
+            # "count": len(data),
             # "total_leads": metrics.get("total_leads", 0),
             # "avg_leads_per_day": metrics.get("avg_leads", 0),
-            "metrics": metrics
-
+            "metrics": metrics,
+            "graph_data": graph_data
         },
     }

@@ -625,13 +625,17 @@ class DashboardRepository:
         return sorted([item["store"] for item in results if item.get("store")])
 
 
-    def _generate_partition_clause(self, start_date: datetime, days: int) -> str:
+    def _get_date_tuples_str(self, start_date: datetime, days: int) -> str:
         date_tuples = []
         for i in range(days):
             current = start_date + timedelta(days=i)
             y, m, d = current.strftime("%Y"), current.strftime("%m"), current.strftime("%d")
             date_tuples.append(f"('{y}', '{m}', '{d}')")
-        return f"(year, month, day) IN ({', '.join(date_tuples)})"
+        return ", ".join(date_tuples)
+
+    def _generate_partition_clause(self, start_date: datetime, days: int) -> str:
+        tuples_str = self._get_date_tuples_str(start_date, days)
+        return f"(year, month, day) IN ({tuples_str})"
 
     async def get_filtered_data(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         # ✅ FIXED week math (current week Monday 00:00)
@@ -641,7 +645,12 @@ class DashboardRepository:
         )
         start_of_last_week = start_of_current_week - timedelta(days=7)
 
-        date_clause = self._generate_partition_clause(start_of_last_week, 14)
+        vauto_date_clause = self._generate_partition_clause(start_of_last_week, 14)
+        
+        # For Graph: Fetch 8 weeks of history (Current Week + 7 previous weeks)
+        start_of_graph_period = start_of_current_week - timedelta(weeks=7)
+        # 8 weeks * 7 days = 56 days
+        drive_date_clause = self._generate_partition_clause(start_of_graph_period, 56)
 
         query_filters = {
             "body": filters.get("body_type"),
@@ -660,7 +669,7 @@ class DashboardRepository:
             ) AS rn
           FROM {self.athena_vauto_table}
           WHERE platform_name = 'vauto'
-            AND {date_clause}
+            AND {vauto_date_clause}
             {"AND body = '" + self._sanitize(query_filters['body']) + "'" if query_filters.get("body") else ""}
             {"AND store = '" + self._sanitize(query_filters['store']) + "'" if query_filters.get("store") else ""}
             {"AND vin = '" + self._sanitize(query_filters['vin']) + "'" if query_filters.get("vin") else ""}
@@ -673,7 +682,7 @@ class DashboardRepository:
 #         SELECT DISTINCT stock_id
 # FROM {self.athena_vauto_table}
 # WHERE platform_name = 'vauto'
-#   AND {date_clause}
+#   AND {vauto_date_clause}
 #   {"AND body = '" + self._sanitize(query_filters['body']) + "'" if query_filters.get("body") else ""}
 #   {"AND store = '" + self._sanitize(query_filters['store']) + "'" if query_filters.get("store") else ""}
 #   {"AND vin = '" + self._sanitize(query_filters['vin']) + "'" if query_filters.get("vin") else ""}
@@ -703,7 +712,7 @@ class DashboardRepository:
             f"FROM {self.athena_drivecentric_table} "
             f"WHERE platform_name = 'drive_centric' "
             f"AND vehicle_1_stock_number IN ('{sanitized_stocks}') "
-            f"AND {date_clause}"
+            f"AND {drive_date_clause}"
         )
 
         drive_results = await self._execute_query(drivecentric_query)
@@ -718,6 +727,10 @@ class DashboardRepository:
         processed_rows = []
         for row in drive_results:
             d = parse_row_date(row)
+            # Determine which week this row belongs to (relative to start_of_current_week)
+            # current week is week 0 (backwards), last week is -1, etc.
+            # actually let's just use the date object for aggregation
+            
             processed_rows.append(
                 {
                     "stock": row.get("vehicle_1_stock_number"),
@@ -725,6 +738,7 @@ class DashboardRepository:
                     "user": row.get("deal_sales_1"),
                     "date": d,
                     "is_current_week": d >= start_of_current_week,
+                    "is_last_week": start_of_last_week <= d < start_of_current_week
                 }
             )
         # logger.info(f"processed_rows: {processed_rows}")
@@ -750,7 +764,8 @@ class DashboardRepository:
             return total, avg
 
         current_week_data = [r for r in processed_rows if r["is_current_week"]]
-        last_week_data = [r for r in processed_rows if not r["is_current_week"]]
+        last_week_data = [r for r in processed_rows if r["is_last_week"]]
+        
         logger.info(f"current_week_data: {len(current_week_data)}")
         logger.info(f"last_week_data: {len(last_week_data)}")
         cur_total, cur_avg= calculate_metrics(current_week_data)
@@ -764,20 +779,100 @@ class DashboardRepository:
             if prev == 0:
                 return 100.0 if curr > 0 else 0.0
             return round(((curr - prev) / prev) * 100, 1)
-        logger.info(f"Total Leads Per Week: {cur_total}")
-        logger.info(f"Avg Leads Per Day: {cur_avg}")
-        logger.info(f"last_total: {last_total}")
-        logger.info(f"last_avg: {last_avg}")
+        logger.info(f"Total Leads current Week: {cur_total}")
+        logger.info(f"Avg Leads current Day: {cur_avg}")
+        logger.info(f"Total Leads last Week: {last_total}")
+        logger.info(f"Avg Leads last Day: {last_avg}")
         logger.info(f"Total Leads Pct Compared To Last Week: {calc_pct(cur_total, last_total)}")
         logger.info(f"Avg Leads Pct Compared To Last Week: {calc_pct(cur_avg, last_avg)}")
+
+
+        # --- Graph Data Aggregation ---
+        # Bucket by Week Start Date
+        weekly_buckets = {}
+        # Initialize buckets for the last 8 weeks (to ensure no gaps)
+        for i in range(8):
+            week_start = start_of_current_week - timedelta(weeks=i)
+            weekly_buckets[week_start] = []
+
+        for row in processed_rows:
+            # Find the Monday of the week for this row
+            r_date = row["date"]
+            # Monday of that week
+            r_week_start = (r_date - timedelta(days=r_date.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            if r_week_start in weekly_buckets:
+                weekly_buckets[r_week_start].append(row)
+        
+        graph_data = []
+        # sort by date ascending
+        sorted_weeks = sorted(weekly_buckets.keys())
+        logger.info(f"sorted_weeks: {sorted_weeks}")
+        
+        for w_start in sorted_weeks:
+            w_rows = weekly_buckets[w_start]
+            # logger.info(f"w_rows: {w_rows}")
+            # Calculate metrics for this week
+            # We want "Avg Leads / Day" which is Total Leads in that week / 7
+            w_total, w_avg = calculate_metrics(w_rows)
+            # logger.info(f"w_total: {w_total}, w_avg: {w_avg}")
+            
+            # Label: "Oct Week 1" logic or just "Month Day"
+            # User example: "October Week 3"
+            # We can approximate "Week N" 
+            month_name = w_start.strftime("%B")
+            # Week number calculation: 1 + (day - 1) // 7
+            week_num = 1 + (w_start.day - 1) // 7
+            label = f"{month_name} Week {week_num}"
+            logger.info(f"week_label: {label}")
+            logger.info(f"week_avg: {w_avg}")
+            logger.info(f"week_total: {w_total}")
+            
+            graph_data.append({
+                "label": label,
+                "value": w_avg,
+                "date": w_start.strftime("%Y-%m-%d") # extra debug info
+            })
+
+
+        # --- NEW: Total Unsold Cars Metrics (vAuto) ---
+        cur_tuples = self._get_date_tuples_str(start_of_current_week, 7)
+        last_tuples = self._get_date_tuples_str(start_of_last_week, 7)
+
+        count_query = f"""
+        SELECT 
+            COUNT(DISTINCT CASE WHEN (year, month, day) IN ({cur_tuples}) THEN stock_id END) as cur_cnt,
+            COUNT(DISTINCT CASE WHEN (year, month, day) IN ({last_tuples}) THEN stock_id END) as last_cnt
+        FROM {self.athena_vauto_table}
+        WHERE platform_name = 'vauto'
+          AND (year, month, day) IN ({cur_tuples}, {last_tuples})
+          {"AND body = '" + self._sanitize(query_filters['body']) + "'" if query_filters.get("body") else ""}
+          {"AND store = '" + self._sanitize(query_filters['store']) + "'" if query_filters.get("store") else ""}
+          {"AND vin = '" + self._sanitize(query_filters['vin']) + "'" if query_filters.get("vin") else ""}
+        """
+        
+        unsold_results = await self._execute_query(count_query)
+        unsold_cur = 0
+        unsold_last = 0
+        if unsold_results:
+             row = unsold_results[0]
+             unsold_cur = int(row.get('cur_cnt', 0))
+             unsold_last = int(row.get('last_cnt', 0))
+
+        total_unsold_pct = calc_pct(unsold_cur, unsold_last)
+        logger.info(f"Unsold Cars: Current={unsold_cur}, Last={unsold_last}, Pct={total_unsold_pct}%")
+
         return {
-            "data": vauto_results,
+            # "data": vauto_results,
             "metrics": {
                 "total_leads_per_week": cur_total,
                 "avg_leads_per_day": cur_avg,
                 "total_leads_pct_compared_to_last_week": calc_pct(cur_total, last_total),
                 "avg_leads_pct_compared_to_last_week": calc_pct(cur_avg, last_avg),
+                "total_unsold_cars": unsold_cur,
+                "total_unsold_cars_pct_compared_to_last_week": total_unsold_pct
             },
+            "graph_data": graph_data
         }
 
 
@@ -788,8 +883,11 @@ class DashboardRepository:
                 "total_leads_per_week": 0,
                 "avg_leads_per_day": 0,
                 "total_leads_pct_compared_to_last_week": 0,
-                "avg_leads_pct_compared_to_last_week": 0
-            }
+                "avg_leads_pct_compared_to_last_week": 0,
+                "total_unsold_cars": 0,
+                "total_unsold_cars_pct_compared_to_last_week": 0
+            },
+            "graph_data": []
         }
 
 
