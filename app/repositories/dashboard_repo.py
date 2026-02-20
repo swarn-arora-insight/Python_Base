@@ -1,4 +1,4 @@
-from utils.athena import run_athena_query, wait_for_query, get_query_results
+from utils.athena import run_athena_query, wait_for_query, get_query_results, run_athena_query_blocking
 import os
 from core.logging import logger
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -535,9 +535,13 @@ from datetime import datetime
 
 
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
+
+import time
+from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -560,18 +564,19 @@ class DashboardRepository:
             return value.replace("'", "''")
         return value
 
+    
     async def _execute_query(self, query: str) -> List[Dict[str, Any]]:
-        # logger.info(f"Running Athena query: {query}")
         try:
-            execution_id = run_athena_query(query, self.athena_db, self.athena_output)
-            state = wait_for_query(execution_id)
-            if state == "SUCCEEDED":
-                return get_query_results(execution_id)
-            logger.error(f"Athena query failed with state: {state}")
-            return []
+            return await asyncio.to_thread(
+                run_athena_query_blocking,
+                query,
+                self.athena_db,
+                self.athena_output,
+            )
         except Exception as e:
             logger.error(f"Athena Execution Error: {str(e)} | Query: {query}")
             return []
+
 
     async def fetch_dynamic_data(
         self,
@@ -631,7 +636,7 @@ class DashboardRepository:
             base = f"{prefix} {col_str} FROM {table}"
             final_query = f"{base} {where_clause}".strip()
 
-        logger.info(f"fetch_dynamic_data SQL: {final_query}")
+        logger.info(f"fetch_dynamic_data SQL of {table} for {platform_name} ")
         return await self._execute_query(final_query)
 
 
@@ -720,15 +725,40 @@ class DashboardRepository:
         if not stock_ids:
             return self._build_empty_response()
 
-        drive_results = await self.fetch_dynamic_data(
-            table=self.athena_drivecentric_table,
-            columns=["vehicle_1_stock_number", "deal_sales_1", "current_stage", "year", "month", "day"],
-            platform_name="drive_centric",
-            in_filters={"vehicle_1_stock_number": stock_ids},
-            custom_where=drive_date_clause,
+        # --- Prepare unsold cars query (independent of stock_ids) ---
+        cur_tuples = self._get_date_tuples_str(start_of_current_week, 7)
+        last_tuples = self._get_date_tuples_str(start_of_last_week, 7)
+
+        raw_select = (
+            f"SELECT "
+            f"COUNT(DISTINCT CASE WHEN (year, month, day) IN ({cur_tuples}) THEN stock_id END) as cur_cnt, "
+            f"COUNT(DISTINCT CASE WHEN (year, month, day) IN ({last_tuples}) THEN stock_id END) as last_cnt "
+            f"FROM {self.athena_vauto_table}"
+        )
+
+        both_tuples = f"{cur_tuples}, {last_tuples}"
+        # custom_where=f"(year, month, day) IN ({both_tuples})"
+        # ✅ Run DriveCentric + Unsold Cars queries in parallel (saves ~4s)
+        drive_results, unsold_results = await asyncio.gather(
+            self.fetch_dynamic_data(
+                table=self.athena_drivecentric_table,
+                columns=["vehicle_1_stock_number", "deal_sales_1", "current_stage", "year", "month", "day"],
+                platform_name="drive_centric",
+                in_filters={"vehicle_1_stock_number": stock_ids},
+                custom_where=drive_date_clause,
+            ),
+            self.fetch_dynamic_data(
+                table=self.athena_vauto_table,
+                raw_select=raw_select,
+                platform_name="vauto",
+                filters=query_filters,
+                # custom_where=f"(year, month, day) IN ({cur_tuples}, {last_tuples})",
+                custom_where=f"(year, month, day) IN ({both_tuples})",
+            ),
         )
         logger.info(f"Fetched {len(drive_results)} DriveCentric rows")
 
+        # --- Process DriveCentric results ---
         def parse_row_date(row):
             try:
                 return datetime(int(row["year"]), int(row["month"]), int(row["day"]))
@@ -757,25 +787,14 @@ class DashboardRepository:
             avg = round(total / float(denom_days), 1)
             return total, avg
 
-        # def calculate_metrics(rows: List[Dict], denom_days: int) -> Tuple[int, float]:
-        #     if not rows or denom_days <= 0:
-        #         return 0, 0.0
-
-        #     total = sum(1 for r in rows if r["stage"] == "lead")
-        #     avg = round(total / float(denom_days), 1)
-        #     return total, avg
-
-
         current_week_data = [r for r in processed_rows if r["is_current_week"]]
         last_week_data = [r for r in processed_rows if r["is_last_week"]]
         logger.info(f"Current week data: {len(current_week_data)}")
         logger.info(f"Last week data: {len(last_week_data)}")
         days_so_far = min(today.weekday() + 1, 7) 
         logger.info(f"Days so far: {days_so_far}")
-        cur_total, cur_avg= calculate_metrics(current_week_data, days_so_far)
-        last_total, last_avg= calculate_metrics(last_week_data,7)
-        # cur_total, cur_avg= calculate_metrics(current_week_data, 7)
-        # last_total, last_avg= calculate_metrics(last_week_data, 7)
+        cur_total, cur_avg = calculate_metrics(current_week_data, days_so_far)
+        last_total, last_avg = calculate_metrics(last_week_data, 7)
 
         def calc_pct(curr, prev):
             if prev == 0:
@@ -789,25 +808,7 @@ class DashboardRepository:
         logger.info(f"percentage change in total leads: {calc_pct(cur_total, last_total)}")
         logger.info(f"percentage change in avg leads: {calc_pct(cur_avg, last_avg)}")
 
-        # --- Graph Data Removed from here ---
-
-        # --- NEW: Total Unsold Cars Metrics (vAuto) ---
-        cur_tuples = self._get_date_tuples_str(start_of_current_week, 7)
-        last_tuples = self._get_date_tuples_str(start_of_last_week, 7)
-
-        raw_select = (
-            f"SELECT "
-            f"COUNT(DISTINCT CASE WHEN (year, month, day) IN ({cur_tuples}) THEN stock_id END) as cur_cnt, "
-            f"COUNT(DISTINCT CASE WHEN (year, month, day) IN ({last_tuples}) THEN stock_id END) as last_cnt "
-            f"FROM {self.athena_vauto_table}"
-        )
-        unsold_results = await self.fetch_dynamic_data(
-            table=self.athena_vauto_table,
-            raw_select=raw_select,
-            platform_name="vauto",
-            filters=query_filters,
-            custom_where=f"(year, month, day) IN ({cur_tuples}, {last_tuples})",
-        )
+        # --- Process unsold cars results ---
         unsold_cur = 0
         unsold_last = 0
         if unsold_results:

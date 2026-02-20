@@ -72,6 +72,7 @@ import boto3
 import time
 import os
 from core.logging import logger
+from typing import List, Dict, Any
 
 def get_athena_client():
     return boto3.client(
@@ -152,6 +153,12 @@ def get_query_results(execution_id: str, page_size: int = 1000) -> list[dict]:
 
     return results
 
+def run_athena_query_blocking(query: str, database: str, output_location: str) -> List[Dict[str, Any]]:
+    execution_id = run_athena_query(query, database, output_location)
+    state = wait_for_query(execution_id)
+    if state == "SUCCEEDED":
+        return get_query_results(execution_id)
+    return [] 
 
 
 
