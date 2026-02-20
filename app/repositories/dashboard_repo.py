@@ -576,17 +576,31 @@ class DashboardRepository:
     async def fetch_dynamic_data(
         self,
         table: str,
-        columns: List[str],
+        columns: List[str] = None,
         filters: Optional[Dict[str, Any]] = None,
         distinct: bool = False,
         custom_where: Optional[str] = None,
         platform_name: Optional[str] = None,
+        in_filters: Optional[Dict[str, List[str]]] = None,
+        raw_select: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        col_str = ", ".join(columns)
-        select_prefix = "SELECT DISTINCT" if distinct else "SELECT"
-        query_parts = [f"{select_prefix} {col_str} FROM {table}"]
+        """
+        Centralized query builder and executor for Athena.
 
-        conditions = []
+        Args:
+            table:         Target table name.
+            columns:       Columns to SELECT (ignored when raw_select is used).
+            filters:       Key-value equality filters -> col = 'val'.
+            distinct:      Use SELECT DISTINCT.
+            custom_where:  Raw SQL appended to WHERE clause.
+            platform_name: Adds platform_name = 'val' filter.
+            in_filters:    Dict of col -> list-of-values for IN (...) clauses.
+            raw_select:    Complete SELECT...FROM string; only the WHERE clause
+                           built here is auto-appended.
+        """
+        # ── 1. Build WHERE conditions ──
+        conditions: List[str] = []
+
         if platform_name:
             conditions.append(f"platform_name = '{self._sanitize(platform_name)}'")
 
@@ -596,14 +610,28 @@ class DashboardRepository:
                     clean_val = self._sanitize(val)
                     conditions.append(f"{col} = '{clean_val}'")
 
+        if in_filters:
+            for col, values in in_filters.items():
+                if values:
+                    sanitized = "', '".join(self._sanitize(v) for v in values)
+                    conditions.append(f"{col} IN ('{sanitized}')")
+
         if custom_where:
             conditions.append(custom_where)
 
-        if conditions:
-            query_parts.append("WHERE " + " AND ".join(conditions))
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        final_query = " ".join(query_parts)
-        # logger.debug(f"Generated SQL: {final_query}")
+        # ── 2. Build final query ──
+        if raw_select:
+            # raw_select includes its own SELECT...FROM, just append WHERE
+            final_query = f"{raw_select} {where_clause}".strip()
+        else:
+            col_str = ", ".join(columns or ["*"])
+            prefix = "SELECT DISTINCT" if distinct else "SELECT"
+            base = f"{prefix} {col_str} FROM {table}"
+            final_query = f"{base} {where_clause}".strip()
+
+        logger.info(f"fetch_dynamic_data SQL: {final_query}")
         return await self._execute_query(final_query)
 
 
@@ -672,41 +700,16 @@ class DashboardRepository:
             "vin": filters.get("vin"),
         }
 
-        # ✅ STABLE vAuto: latest row per stock_id (instead of DISTINCT *)
-        # vauto_query = f"""
-        # WITH x AS (
-        #   SELECT
-        #     *,
-        #     row_number() OVER (
-        #       PARTITION BY stock_id
-        #       ORDER BY year DESC, month DESC, day DESC
-        #     ) AS rn
-        #   FROM {self.athena_vauto_table}
-        #   WHERE platform_name = 'vauto'
-        #     AND {vauto_date_clause}
-        #     {"AND body = '" + self._sanitize(query_filters['body']) + "'" if query_filters.get("body") else ""}
-        #     {"AND store = '" + self._sanitize(query_filters['store']) + "'" if query_filters.get("store") else ""}
-        #     {"AND vin = '" + self._sanitize(query_filters['vin']) + "'" if query_filters.get("vin") else ""}
-        # )
-        # SELECT * FROM x WHERE rn = 1
-        # """
-
-        vauto_unique_stock_ids_query = f"""
-            SELECT DISTINCT stock_id
-            FROM {self.athena_vauto_table}
-            WHERE platform_name = 'vauto'
-            AND {vauto_date_clause}
-            {"AND body = '" + self._sanitize(query_filters['body']) + "'" if query_filters.get("body") else ""}
-            {"AND store = '" + self._sanitize(query_filters['store']) + "'" if query_filters.get("store") else ""}
-            {"AND vin = '" + self._sanitize(query_filters['vin']) + "'" if query_filters.get("vin") else ""}
-            AND stock_id IS NOT NULL
-        """
-
-        vauto_results = await self._execute_query(vauto_unique_stock_ids_query)
+        # ✅ vAuto: fetch unique stock_ids via fetch_dynamic_data
+        vauto_results = await self.fetch_dynamic_data(
+            table=self.athena_vauto_table,
+            columns=["stock_id"],
+            distinct=True,
+            platform_name="vauto",
+            filters=query_filters,
+            custom_where=f"{vauto_date_clause} AND stock_id IS NOT NULL",
+        )
         logger.info(f"vauto_results_unique_stock_ids: {len(vauto_results)}")
-
-        # vauto_results = await self._execute_query(vauto_query)
-        # logger.info(f"CTE vauto_results: {len(vauto_results)}")
 
         if not vauto_results:
             return self._build_empty_response()
@@ -717,17 +720,13 @@ class DashboardRepository:
         if not stock_ids:
             return self._build_empty_response()
 
-        sanitized_stocks = "', '".join([self._sanitize(s) for s in stock_ids])
-
-        drivecentric_query = (
-            f"SELECT vehicle_1_stock_number, deal_sales_1, current_stage, year, month, day "
-            f"FROM {self.athena_drivecentric_table} "
-            f"WHERE platform_name = 'drive_centric' "
-            f"AND vehicle_1_stock_number IN ('{sanitized_stocks}') "
-            f"AND {drive_date_clause}"
+        drive_results = await self.fetch_dynamic_data(
+            table=self.athena_drivecentric_table,
+            columns=["vehicle_1_stock_number", "deal_sales_1", "current_stage", "year", "month", "day"],
+            platform_name="drive_centric",
+            in_filters={"vehicle_1_stock_number": stock_ids},
+            custom_where=drive_date_clause,
         )
-
-        drive_results = await self._execute_query(drivecentric_query)
         logger.info(f"Fetched {len(drive_results)} DriveCentric rows")
 
         def parse_row_date(row):
@@ -796,19 +795,19 @@ class DashboardRepository:
         cur_tuples = self._get_date_tuples_str(start_of_current_week, 7)
         last_tuples = self._get_date_tuples_str(start_of_last_week, 7)
 
-        count_query = f"""
-        SELECT 
-            COUNT(DISTINCT CASE WHEN (year, month, day) IN ({cur_tuples}) THEN stock_id END) as cur_cnt,
-            COUNT(DISTINCT CASE WHEN (year, month, day) IN ({last_tuples}) THEN stock_id END) as last_cnt
-        FROM {self.athena_vauto_table}
-        WHERE platform_name = 'vauto'
-          AND (year, month, day) IN ({cur_tuples}, {last_tuples})
-          {"AND body = '" + self._sanitize(query_filters['body']) + "'" if query_filters.get("body") else ""}
-          {"AND store = '" + self._sanitize(query_filters['store']) + "'" if query_filters.get("store") else ""}
-          {"AND vin = '" + self._sanitize(query_filters['vin']) + "'" if query_filters.get("vin") else ""}
-        """
-        
-        unsold_results = await self._execute_query(count_query)
+        raw_select = (
+            f"SELECT "
+            f"COUNT(DISTINCT CASE WHEN (year, month, day) IN ({cur_tuples}) THEN stock_id END) as cur_cnt, "
+            f"COUNT(DISTINCT CASE WHEN (year, month, day) IN ({last_tuples}) THEN stock_id END) as last_cnt "
+            f"FROM {self.athena_vauto_table}"
+        )
+        unsold_results = await self.fetch_dynamic_data(
+            table=self.athena_vauto_table,
+            raw_select=raw_select,
+            platform_name="vauto",
+            filters=query_filters,
+            custom_where=f"(year, month, day) IN ({cur_tuples}, {last_tuples})",
+        )
         unsold_cur = 0
         unsold_last = 0
         if unsold_results:
@@ -852,36 +851,15 @@ class DashboardRepository:
             "vin": filters.get("vin"),
         }
 
-        # vauto_query = f"""
-        # WITH x AS (
-        #   SELECT
-        #     *,
-        #     row_number() OVER (
-        #       PARTITION BY stock_id
-        #       ORDER BY year DESC, month DESC, day DESC
-        #     ) AS rn
-        #   FROM {self.athena_vauto_table}
-        #   WHERE platform_name = 'vauto'
-        #     AND {vauto_date_clause}
-        #     {"AND body = '" + self._sanitize(query_filters['body']) + "'" if query_filters.get("body") else ""}
-        #     {"AND store = '" + self._sanitize(query_filters['store']) + "'" if query_filters.get("store") else ""}
-        #     {"AND vin = '" + self._sanitize(query_filters['vin']) + "'" if query_filters.get("vin") else ""}
-        # )
-        # SELECT * FROM x WHERE rn = 1
-        # """
-
-        vauto_unique_stock_ids_query = f"""
-            SELECT DISTINCT stock_id
-            FROM {self.athena_vauto_table}
-            WHERE platform_name = 'vauto'
-            AND {vauto_date_clause}
-            {"AND body = '" + self._sanitize(query_filters['body']) + "'" if query_filters.get("body") else ""}
-            {"AND store = '" + self._sanitize(query_filters['store']) + "'" if query_filters.get("store") else ""}
-            {"AND vin = '" + self._sanitize(query_filters['vin']) + "'" if query_filters.get("vin") else ""}
-            AND stock_id IS NOT NULL
-        """
-
-        vauto_results = await self._execute_query(vauto_unique_stock_ids_query)
+        # ✅ vAuto: fetch unique stock_ids via fetch_dynamic_data
+        vauto_results = await self.fetch_dynamic_data(
+            table=self.athena_vauto_table,
+            columns=["stock_id"],
+            distinct=True,
+            platform_name="vauto",
+            filters=query_filters,
+            custom_where=f"{vauto_date_clause} AND stock_id IS NOT NULL",
+        )
         logger.info(f"vauto_results_unique_stock_ids: {len(vauto_results)}")
 
         if not vauto_results:
@@ -892,17 +870,13 @@ class DashboardRepository:
         if not stock_ids:
             return {"graph_data": []}
 
-        sanitized_stocks = "', '".join([self._sanitize(s) for s in stock_ids])
-
-        drivecentric_query = (
-            f"SELECT vehicle_1_stock_number, current_stage, year, month, day "
-            f"FROM {self.athena_drivecentric_table} "
-            f"WHERE platform_name = 'drive_centric' "
-            f"AND vehicle_1_stock_number IN ('{sanitized_stocks}') "
-            f"AND {drive_date_clause}"
+        drive_results = await self.fetch_dynamic_data(
+            table=self.athena_drivecentric_table,
+            columns=["vehicle_1_stock_number", "current_stage", "year", "month", "day"],
+            platform_name="drive_centric",
+            in_filters={"vehicle_1_stock_number": stock_ids},
+            custom_where=drive_date_clause,
         )
-
-        drive_results = await self._execute_query(drivecentric_query)
         logger.info(f"drive_results: {len(drive_results)}")
 
         def parse_row_date(row):
