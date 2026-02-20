@@ -673,26 +673,40 @@ class DashboardRepository:
         }
 
         # ✅ STABLE vAuto: latest row per stock_id (instead of DISTINCT *)
-        vauto_query = f"""
-        WITH x AS (
-          SELECT
-            *,
-            row_number() OVER (
-              PARTITION BY stock_id
-              ORDER BY year DESC, month DESC, day DESC
-            ) AS rn
-          FROM {self.athena_vauto_table}
-          WHERE platform_name = 'vauto'
+        # vauto_query = f"""
+        # WITH x AS (
+        #   SELECT
+        #     *,
+        #     row_number() OVER (
+        #       PARTITION BY stock_id
+        #       ORDER BY year DESC, month DESC, day DESC
+        #     ) AS rn
+        #   FROM {self.athena_vauto_table}
+        #   WHERE platform_name = 'vauto'
+        #     AND {vauto_date_clause}
+        #     {"AND body = '" + self._sanitize(query_filters['body']) + "'" if query_filters.get("body") else ""}
+        #     {"AND store = '" + self._sanitize(query_filters['store']) + "'" if query_filters.get("store") else ""}
+        #     {"AND vin = '" + self._sanitize(query_filters['vin']) + "'" if query_filters.get("vin") else ""}
+        # )
+        # SELECT * FROM x WHERE rn = 1
+        # """
+
+        vauto_unique_stock_ids_query = f"""
+            SELECT DISTINCT stock_id
+            FROM {self.athena_vauto_table}
+            WHERE platform_name = 'vauto'
             AND {vauto_date_clause}
             {"AND body = '" + self._sanitize(query_filters['body']) + "'" if query_filters.get("body") else ""}
             {"AND store = '" + self._sanitize(query_filters['store']) + "'" if query_filters.get("store") else ""}
             {"AND vin = '" + self._sanitize(query_filters['vin']) + "'" if query_filters.get("vin") else ""}
-        )
-        SELECT * FROM x WHERE rn = 1
+            AND stock_id IS NOT NULL
         """
 
-        vauto_results = await self._execute_query(vauto_query)
-        logger.info(f"vauto_results: {len(vauto_results)}")
+        vauto_results = await self._execute_query(vauto_unique_stock_ids_query)
+        logger.info(f"vauto_results_unique_stock_ids: {len(vauto_results)}")
+
+        # vauto_results = await self._execute_query(vauto_query)
+        # logger.info(f"CTE vauto_results: {len(vauto_results)}")
 
         if not vauto_results:
             return self._build_empty_response()
@@ -751,22 +765,6 @@ class DashboardRepository:
         #     total = sum(1 for r in rows if r["stage"] == "lead")
         #     avg = round(total / float(denom_days), 1)
         #     return total, avg
-#         {
-#   "header": {
-#     "code": 200,
-#     "message": "Success"
-#   },
-#   "response": {
-#     "metrics": {
-#       "total_leads_per_week": 95,
-#       "avg_leads_per_day": 13.6,
-#       "total_leads_pct_compared_to_last_week": -37.5,
-#       "avg_leads_pct_compared_to_last_week": -37.3,
-#       "total_unsold_cars": 165,
-#       "total_unsold_cars_pct_compared_to_last_week": -22.5
-#     }
-#   }
-# }
 
 
         current_week_data = [r for r in processed_rows if r["is_current_week"]]
@@ -854,26 +852,38 @@ class DashboardRepository:
             "vin": filters.get("vin"),
         }
 
-        vauto_query = f"""
-        WITH x AS (
-          SELECT
-            *,
-            row_number() OVER (
-              PARTITION BY stock_id
-              ORDER BY year DESC, month DESC, day DESC
-            ) AS rn
-          FROM {self.athena_vauto_table}
-          WHERE platform_name = 'vauto'
+        # vauto_query = f"""
+        # WITH x AS (
+        #   SELECT
+        #     *,
+        #     row_number() OVER (
+        #       PARTITION BY stock_id
+        #       ORDER BY year DESC, month DESC, day DESC
+        #     ) AS rn
+        #   FROM {self.athena_vauto_table}
+        #   WHERE platform_name = 'vauto'
+        #     AND {vauto_date_clause}
+        #     {"AND body = '" + self._sanitize(query_filters['body']) + "'" if query_filters.get("body") else ""}
+        #     {"AND store = '" + self._sanitize(query_filters['store']) + "'" if query_filters.get("store") else ""}
+        #     {"AND vin = '" + self._sanitize(query_filters['vin']) + "'" if query_filters.get("vin") else ""}
+        # )
+        # SELECT * FROM x WHERE rn = 1
+        # """
+
+        vauto_unique_stock_ids_query = f"""
+            SELECT DISTINCT stock_id
+            FROM {self.athena_vauto_table}
+            WHERE platform_name = 'vauto'
             AND {vauto_date_clause}
             {"AND body = '" + self._sanitize(query_filters['body']) + "'" if query_filters.get("body") else ""}
             {"AND store = '" + self._sanitize(query_filters['store']) + "'" if query_filters.get("store") else ""}
             {"AND vin = '" + self._sanitize(query_filters['vin']) + "'" if query_filters.get("vin") else ""}
-        )
-        SELECT * FROM x WHERE rn = 1
+            AND stock_id IS NOT NULL
         """
 
-        vauto_results = await self._execute_query(vauto_query)
-        
+        vauto_results = await self._execute_query(vauto_unique_stock_ids_query)
+        logger.info(f"vauto_results_unique_stock_ids: {len(vauto_results)}")
+
         if not vauto_results:
             return {"graph_data": []}
             
