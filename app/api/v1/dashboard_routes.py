@@ -5,6 +5,16 @@ from services.user_service import UserService
 from repositories.dashboard_repo import DashboardRepository
 from schemas.dashboard import FilterDashboardRequest
 from core.logging import logger
+from pathlib import Path
+from datetime import datetime, timedelta
+import asyncio
+import json
+import os
+BASE_DIR = Path(os.getenv("BASE_DIR", "/home/backend_user/LeadBoostAI"))
+JOB_HEALTH_DIR = BASE_DIR / "job_health"
+JOB_HEALTH_FILE = JOB_HEALTH_DIR / "job_health.json"
+PLATFORMS = ["vauto", "carguru", "drive_centric"]
+
 
 router = APIRouter()
 
@@ -163,4 +173,44 @@ async def get_lead_performance_data(
         "response": {
             "graph_data": graph_data
         },
+    }
+
+
+# ── Job Health ──────────────────────────────────────────────
+
+
+def _read_job_health_file() -> dict:
+    """Read the job_health.json file (blocking I/O, called via to_thread)."""
+    if not JOB_HEALTH_FILE.exists():
+        return {}
+    with open(JOB_HEALTH_FILE, "r") as f:
+        return json.load(f)
+
+
+@router.get("/job_health")
+async def get_job_health():
+    """
+    Return job health status for the last 7 days.
+    Missing days are filled with all platforms set to 'pending'.
+    """
+    logger.info("Fetching job health data")
+
+    # Non-blocking file read
+    raw_data = await asyncio.to_thread(_read_job_health_file)
+
+    # Build last 7 days (today → 6 days ago)
+    today = datetime.now().date()
+    default_status = {p: "pending" for p in PLATFORMS}
+
+    result = {}
+    for i in range(7):
+        day_str = (today - timedelta(days=i)).strftime("%Y-%m-%d")
+        result[day_str] = raw_data.get(day_str, default_status)
+
+    return {
+        "header": {
+            "code": 200,
+            "message": "Success",
+        },
+        "response": result,
     }
