@@ -32,3 +32,5 @@ app/core/config.py
 
 # macOS
 .DS_Store
+.pem
+keys

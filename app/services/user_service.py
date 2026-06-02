@@ -17,12 +17,12 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from core.db import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from fastapi import APIRouter, Request, HTTPException, Depends
 load_dotenv()
 
 BASE_URL = os.getenv("BASE_URL")
 secret_key = os.getenv("USER_AUTH_SECRET_KEY")
-
+ORCHESTRATOR_PUBLIC_KEY = open("/home/ubuntu/template/app/keys/orchestrator_public.pem").read()
 
 ALGORITHM = "HS256"
 SECURITY = HTTPBearer()
@@ -79,15 +79,73 @@ class UserService:
         ) as exc:
             raise HTTPException(status_code=401, detail="Invalid token") from exc
 
+    # @staticmethod
+    # async def require_authorization(
+    #     authorization: HTTPAuthorizationCredentials = Depends(SECURITY),
+    #     db: AsyncSession = Depends(get_db),
+    # ) -> dict:
+    #     if not authorization:
+    #         raise HTTPException(
+    #             status_code=401, detail="Authorization header is required"
+    #         )
+
+    #     try:
+    #         auth_token = authorization.credentials
+    #         decrypted = UserRepository.aes_decrypt(json.dumps(auth_token))
+    #         payload = json.loads(decrypted)
+
+    #         user_id = payload.get("user_id")
+    #         if not user_id:
+    #             raise HTTPException(status_code=401, detail="Invalid token")
+
+    #         repo = UserRepository(db)
+    #         user_detail = await repo.get_user_details(user_id)
+    #         return user_detail
+
+    #     except Exception as e:
+    #         logger.error(f"Authorization error: {str(e)}")
+    #         raise HTTPException(status_code=401, detail="Invalid Authorization token")
+
+
     @staticmethod
     async def require_authorization(
-        authorization: HTTPAuthorizationCredentials = Depends(SECURITY),
+        request: Request,
+        # authorization: HTTPAuthorizationCredentials | None = Depends(
+        #     HTTPBearer(auto_error=False)
+        # ),
+        authorization: Optional[HTTPAuthorizationCredentials] = Depends(
+            HTTPBearer(auto_error=False)
+        ),
         db: AsyncSession = Depends(get_db),
     ) -> dict:
+        # ─── Try SSO cookie first ───
+        sso_cookie = request.cookies.get("project_template_session")
+        if sso_cookie:
+            try:
+                payload = jwt.decode(
+                    sso_cookie,
+                    ORCHESTRATOR_PUBLIC_KEY,
+                    algorithms=["RS256"],
+                    options={"require": ["exp", "iss", "user_id"]},
+                )
+                if payload.get("iss") == "orchestrator":
+                    sso_user_id = str(payload["user_id"])
+                    repo = UserRepository(db)
+                    user_detail = await repo.get_user_details(sso_user_id)
+                    if user_detail:
+                        return user_detail
+                    # SSO user has no local row — return minimal info
+                    return {
+                        "user_id": sso_user_id,
+                        "role_id": "R0001",
+                        "auth_provider": "sso",
+                    }
+            except jwt.InvalidTokenError:
+                pass  # fall through to header check
+
+        # ─── Standalone AES blob check (existing logic) ───
         if not authorization:
-            raise HTTPException(
-                status_code=401, detail="Authorization header is required"
-            )
+            raise HTTPException(status_code=401, detail="Authorization header is required")
 
         try:
             auth_token = authorization.credentials
@@ -101,7 +159,6 @@ class UserService:
             repo = UserRepository(db)
             user_detail = await repo.get_user_details(user_id)
             return user_detail
-
         except Exception as e:
             logger.error(f"Authorization error: {str(e)}")
             raise HTTPException(status_code=401, detail="Invalid Authorization token")

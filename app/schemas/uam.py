@@ -42,69 +42,93 @@ class OrganizationOut(OrganizationBase):
         orm_mode = True
 
 class TabsList(BaseModel):
-    token:str
+     token: Optional[str] = None
 
 class OrgDetails(BaseModel):
-    token:str
+    token: Optional[str] = None
 
 class CreateOrg(BaseModel):
-    token:str
+    token: Optional[str] = None
     org_name:str
 
 class EditOrg(BaseModel):
-    token:str
+    token: Optional[str] = None
     org_name:str
     org_id:str
 
 class DeleteOrg(BaseModel):
-    token:str
+    token: Optional[str] = None
     org_id:str
 
-class RoleDetails(BaseModel):
-    token:str
-
-class CreateRole(BaseModel):
-    token:str
-    role_name:str
-
-class EditRole(BaseModel):
-    token:str
-    role_name:str
+class DeleteRole(BaseModel):
+    token: Optional[str] = None
     role_id:str
 
+class RoleDetails(BaseModel):
+    token: Optional[str] = None
+
+class CreateRole(BaseModel):
+    token: Optional[str] = None
+    role_name:str
+    # permission_level:int
+
+class EditRole(BaseModel):
+    token: Optional[str] = None
+    role_name:str
+    role_id:str
+    # permission_level:int
+
 class GetFeatures(BaseModel):
-    token:str
+    token: Optional[str] = None
+    role_id:str
 
 class CreateFeatureGroup(BaseModel):
-    token:str
+    token: Optional[str] = None
     feature_grp_name:str
 
 class CreateFeature(BaseModel):
-    token:str
+    token: Optional[str] = None
     feature_name:str
     feature_grp_id:str
 
 class DeleteFeature(BaseModel):
-    token:str
+    token: Optional[str] = None
     feature_id:str
 
 class FeatureRoleList(BaseModel):
-    token:str
+    token: Optional[str] = None
     role_id:str
 
 class AssignFeatureToRole(BaseModel):
-    token:str
+    token: Optional[str] = None
     role_id:str
     feature_id:str
     permission_level:int
 
 class EditFeatureRole(BaseModel):
-    token:str
+    token: Optional[str] = None
     role_id:str
     feature_id:str
     permission_level:int
 
 class DeleteFeatureRole(BaseModel):
-    token:str
+    token: Optional[str] = None
     role_id:str
     feature_id:str
+
+class FeatureAssignItem(BaseModel):
+    role_id: str
+    feature_id: str
+    permission_level: int
+
+class FeatureAssignRequest(BaseModel):
+    token: Optional[str] = None
+    features: List[FeatureAssignItem]
+
+class EditUserRequest(BaseModel):
+    token: Optional[str] = None
+    user_id: str
+    first_name: str
+    last_name: str
+    org_id: str
+    role_id: str

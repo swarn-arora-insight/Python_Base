@@ -1,6 +1,6 @@
 # app/main.py
 from fastapi import FastAPI, Request
-from api.v1 import user_routes, post_routes, comment_routes, uam_routes
+from api.v1 import user_routes, post_routes, comment_routes, uam_routes,dashboard_routes
 from utils.init_db import init_db
 from core.logging import logger
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,7 +37,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 origins = [
-    "http://localhost:3000",
+    "http://localhost:3002",
     "https://dev.viewcurry.com"
 ]
 
@@ -54,21 +54,23 @@ app.add_middleware(
 # app.include_router(post_routes.router, prefix="/v1/posts", tags=["Posts"]) # Currently commented out and will be used based on future requirements.
 # app.include_router(comment_routes.router, prefix="/v1/comments", tags=["Comments"]) # Currently commented out and will be used based on future requirements.
 app.include_router(user_routes.router, prefix="/v1/users", tags=["Users"])
+app.include_router(dashboard_routes.router, prefix="/v1/dashboard", tags=["Dashboard"])
 app.include_router(uam_routes.router, prefix="/v1/uam", tags=["UAM"])
 
 # Initialize the database
 @app.on_event("startup")
 async def on_startup():
-    try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-    except Exception as e:
-        traceback.print_exc()
-        logger.error(f"Internal server error occurred: {str(e)}")
-        raise 
-    try:
-        await init_db()
-    except Exception as e:
-        traceback.print_exc()
-        logger.error(f"Internal server error occurred: {str(e)}")
-        raise
+    # try:
+    #     async with engine.begin() as conn:
+    #         await conn.run_sync(Base.metadata.create_all)
+    # except Exception as e:
+    #     traceback.print_exc()
+    #     logger.error(f"Internal server error occurred: {str(e)}")
+    #     raise 
+    # try:
+    #     await init_db()
+    # except Exception as e:
+    #     traceback.print_exc()
+    #     logger.error(f"Internal server error occurred: {str(e)}")
+    pass
+        # raise

@@ -11,9 +11,10 @@ import base64
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
-
+import uuid
+from datetime import datetime, timedelta, timezone
 FRONTED_SECRET_KEY = b"w3@r37hebe5773@m"
-
+import json
 
 class UserRepository:
     def __init__(self, db: AsyncSession):
@@ -118,6 +119,73 @@ class UserRepository:
         except Exception as e:
             logger.error(f"Error fetching user by email: {str(e)}")
             return None
+
+    async def _find_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Helper method to find an active user by user ID.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+
+        Returns:
+            Optional[Dict[str, Any]]: The user document if found, None otherwise.
+        """
+        try:
+            logger.info(f"Searching for user with user_id: {user_id}")
+            result = await self.db.execute(
+                select(User).where(User.user_id == user_id, User.is_active == 1)
+            )
+            user_data = result.scalars().one_or_none()
+            if user_data is None:
+                logger.info(f"No active user found with user_id: {user_id}")
+                return None
+            return {
+                "user_id": user_data.user_id,
+                "email": user_data.email,
+                "first_name": user_data.first_name,
+                "last_name": user_data.last_name,
+                "password": user_data.password,
+                "last_logged_in": user_data.last_logged_in,
+                "id": user_data.id,
+                "is_auth": user_data.is_auth,
+                "org_id": user_data.org_id,
+                "role_id": user_data.role_id,
+                # Include other fields as necessary
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching user by user_id: {str(e)}")
+            return None
+
+        
+    async def issue_token_for_user(self, user: dict) -> dict:
+        """
+        Mint + persist a fresh session token for an existing user record.
+        Mirrors the token logic in authenticate_user so SSO and standalone
+        login behave identically. Returns access_token + opaque token.
+        """
+        access_token_claims = {
+            "email": user.get("email"),
+            "org_id": user.get("org_id"),
+            "role_id": user.get("role_id"),
+            "user_id": user.get("user_id"),
+            "exp": (datetime.utcnow() + timedelta(hours=8)).isoformat(),
+        }
+        access_token = await self.aes_encrypt(json.dumps(access_token_claims))
+        token = uuid.uuid4().hex[:32]
+
+        user["token"] = token
+        user["last_logged_in"] = datetime.utcnow().isoformat()
+        await self.upsert_item(user)
+
+        return {
+            "access_token": access_token,
+            "token": token,
+            "user_id": str(user["user_id"]),
+            "role": user.get("role_id", "admin"),
+        }
+
+
 
     async def upsert_item(self, user_details: Dict[str, Any]):
         """

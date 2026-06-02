@@ -1,8 +1,15 @@
 # app/models/uam.py
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Table, DateTime, func
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Table, DateTime, func, SmallInteger
 from sqlalchemy.dialects.mysql import TINYINT
 from sqlalchemy.orm import relationship
 from models.base import Base
+import enum
+
+class PermissionLevel(enum.IntEnum):
+    NONE = 1
+    READ = 2
+    WRITE = 3
+    DELETE = 4
 
 # Association Table for Role <-> Feature
 # role_feature_association = Table(
@@ -49,6 +56,8 @@ class Role(Base):
     id = Column(Integer, primary_key=True, index=True)
     role_id = Column(String(200), unique=True, index=True, nullable=False)
     role_name = Column(String(100), unique=True, nullable=False)
+    permission_level = Column(TINYINT(4), nullable=False, default=1)
+    # permission_level = Column(SmallInteger, nullable=False, default=1)
     is_active = Column(Boolean, default=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
     updated_by = Column(String(200), nullable=True)
@@ -64,5 +73,6 @@ class RoleFeature(Base):
     role_id = Column(String(200), index=True, nullable=False)
     feature_id = Column(String(200), index=True, nullable=False)
     permission_level = Column(TINYINT(4), nullable=False, default=1)
+    # permission_level = Column(SmallInteger, nullable=False, default=1)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
     updated_by = Column(String(200), nullable=True)

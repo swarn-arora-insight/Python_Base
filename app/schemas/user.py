@@ -72,10 +72,10 @@ class UserOut(UserBase):
 
 
 class UserList(BaseModel):
-    token: str
+    token: Optional[str] = None
 
 class CreateUser(BaseModel):
-    token: str
+    token: Optional[str] = None
     first_name: str
     last_name: str
     org_id: Optional[str]
@@ -84,8 +84,8 @@ class CreateUser(BaseModel):
     password: str
 
 class DeleteUser(BaseModel):
-    token: str
+    token: Optional[str] = None
     user_id: str
 
 class LogoutUser(BaseModel):
-    token: str
+    token: Optional[str] = None
